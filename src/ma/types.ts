@@ -17,16 +17,40 @@ export interface Player {
   active_source: string | null;
 }
 
+/**
+ * One image MA knows about. `path` is the provider's own URL and may embed credentials
+ * and point at a host the kiosk cannot reach — never render it. Always go through
+ * `/imageproxy/<proxy_id>`, which is the canonical form from API schema 31 onward.
+ */
+export interface MediaImage {
+  type: "thumb" | "fanart" | "banner" | "logo" | "cutout" | "other" | string;
+  path: string;
+  provider: string;
+  remotely_accessible: boolean;
+  proxy_id: string;
+}
+
+export interface MediaMetadata {
+  images?: MediaImage[] | null;
+  /** Qobuz parental_warning surfaces here. Absent means unknown, NOT clean. */
+  explicit?: boolean | null;
+  genres?: string[] | null;
+  label?: string | null;
+  release_date?: string | null;
+  description?: string | null;
+}
+
 export interface Album {
   item_id: string;
+  provider: string;
   uri: string;
   name: string;
   version: string;
   year?: number;
-  artists: { name: string; uri?: string }[];
-  image?: string;
-  /** Qobuz parental_warning surfaces here. Absent means unknown, NOT clean. */
-  explicit?: boolean;
+  album_type?: string;
+  favorite?: boolean;
+  artists: { item_id: string; name: string; uri?: string }[];
+  metadata: MediaMetadata;
 }
 
 export interface Track {
@@ -36,7 +60,7 @@ export interface Track {
   /** Position within the album. This is the numeral the child sees. */
   track_number?: number;
   duration?: number;
-  explicit?: boolean;
+  metadata: MediaMetadata;
 }
 
 export interface ServerInfo {

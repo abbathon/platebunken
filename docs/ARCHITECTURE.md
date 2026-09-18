@@ -85,6 +85,11 @@ MA already serves sized thumbnails at `/imageproxy/<id>?size=N`. `node-sonos-htt
 Full comparison in `research/01`.
 
 **Verified deployment.** MA **2.9.9, API schema 31**, running as a Home Assistant add-on.
+Music providers enabled: `qobuz`, `jellyfin` (which is where the NAS library actually comes
+from — not the filesystem provider), `builtin`, `radiobrowser`, `podcast_index`. Metadata:
+`musicbrainz`, `coverartarchive`, `theaudiodb`, `fanarttv`, `itunes_artwork`, `wikipedia`,
+`lrclib`, and `lastfm_recommendations` — the last is worth reusing for curation rather than
+calling Last.fm directly.
 The authoritative command reference is that server's own `/api-docs/commands.json` — 238
 commands — not any GitHub branch. Every command this app calls was confirmed present there.
 
@@ -240,11 +245,14 @@ and wind the volume down — a recovery path, and an automation hook. The front 
 
 ### 7.2 The laptop as a Music Assistant player
 
-> **Version warning.** Everything in this subsection came from MA's `dev` branch at API
-> schema 77. The deployed server is **2.9.9, schema 31**, and neither `sendspin` nor
-> `local_audio` appears anywhere in its published command list. Treat the below as a
-> description of a future version and re-check the available player providers on the
-> running server (`providers/manifests`) before building against any of it.
+>  **Verified on the running server.** Both `sendspin` and `local_audio` are present and
+> **enabled** as player providers on 2.9.9 — along with `sonos`, `airplay`, `chromecast`,
+> `dlna`, `snapcast`, `universal_group`, `sync_group` and `universal_player`. So the
+> recommendation below is available today.
+>
+> (An earlier note here claimed the opposite, reasoning from their absence in
+> `/api-docs/commands.json`. That was invalid: providers are not commands. List them with
+> `config/providers`, not the command reference.)
 
 MA's old `builtin_player` is gone; the browser web player is now a **Sendspin** client over a
 WebRTC DataChannel. It is fully targetable with volume 0–100 and gets lossless FLAC on a LAN
@@ -320,6 +328,12 @@ a decade. Design passes via the Impeccable skills.
 
 - **No virtualization library.** `content-visibility: auto` + `contain-intrinsic-size` (~7× initial
   render win) suffices below a couple of thousand covers.
+- **Artwork lives at `metadata.images[]`, not a top-level field**, and each entry carries a
+  `proxy_id`. Use `/imageproxy/<proxy_id>` and nothing else: the raw `path` is the source
+  provider's own URL, can embed that provider's API key, and is flagged
+  `remotely_accessible: false` — the kiosk may not even be able to reach it.
+- **`explicit` lives at `metadata.explicit`**, and is frequently absent. Absent means
+  unknown, never clean.
 - **Request the smallest imageproxy size that covers the tile.** MA resizes to a fixed allowlist
   only — `{0, 80, 160, 256, 512, 1024}` — and rejects anything else, so "exactly the tile size" is
   not available. Never CSS-downscale a full cover: at ~4 bytes per decoded pixel that is where an

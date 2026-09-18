@@ -8,7 +8,7 @@
  * returns albums, cover art resolves, and an album plays on the target speaker.
  */
 import { MassClient } from "../src/ma/client.ts";
-import { coverUrl } from "../src/ma/images.ts";
+import { coverProxyId, coverUrl } from "../src/ma/images.ts";
 
 const baseUrl = process.env.MA_HOST?.startsWith("http")
   ? process.env.MA_HOST
@@ -64,14 +64,21 @@ if (albums.length === 0) bad("library returned no albums — is a provider confi
 else ok(`library returned albums (showing ${albums.length})`);
 for (const a of albums) {
   const artist = a.artists?.[0]?.name ?? "?";
-  const warn = a.explicit === true ? " [explicit]" : a.explicit === undefined ? " [explicit: unknown]" : "";
+  const ex = a.metadata?.explicit;
+  const warn = ex === true ? " [explicit]" : ex == null ? " [explicit: unknown]" : "";
   console.log(`    ${artist} — ${a.name}${warn}`);
 }
 
 // 5 — artwork
-const withArt = albums.find((a) => a.image);
-if (withArt?.image) ok(`cover art resolves: ${coverUrl(baseUrl, withArt.image, 256, 2)}`);
-else bad("no album carried an image id — check the metadata provider");
+const withArt = albums.map((a) => coverProxyId(a)).find(Boolean);
+if (withArt) {
+  const url = coverUrl(baseUrl, withArt, 256, 2);
+  const res = await fetch(url).catch(() => null);
+  if (res?.ok) ok(`cover art resolves (${res.headers.get("content-type")}, ${res.headers.get("content-length") ?? "?"} bytes)`);
+  else bad(`imageproxy returned ${res?.status ?? "no response"} for ${url}`);
+} else {
+  bad(`none of the ${albums.length} albums carried artwork`);
+}
 
 // 6 — playback
 if (doPlay) {

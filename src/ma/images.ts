@@ -12,6 +12,17 @@ export function pickSize(cssPx: number, dpr = 1): ImageSize {
   return 1024; // largest real size; 0 means "no resize" and is not what we want here
 }
 
+/**
+ * The cover image for an album, as a proxy id. Prefers the square `thumb` — fanart and
+ * banners are the wrong shape for a crate. Returns null when MA knows of no artwork,
+ * which the UI must handle rather than rendering a broken tile.
+ */
+export function coverProxyId(item: { metadata?: { images?: { type: string; proxy_id: string }[] | null } }): string | null {
+  const images = item.metadata?.images;
+  if (!images?.length) return null;
+  return (images.find((i) => i.type === "thumb") ?? images[0]).proxy_id;
+}
+
 export function coverUrl(baseUrl: string, imageId: string, cssPx: number, dpr = 1): string {
   const u = new URL(`/imageproxy/${encodeURIComponent(imageId)}`, baseUrl);
   u.searchParams.set("size", String(pickSize(cssPx, dpr)));
