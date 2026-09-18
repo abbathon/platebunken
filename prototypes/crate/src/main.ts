@@ -302,7 +302,9 @@ function caption(a: Album | undefined): HTMLElement {
  * its usual corner, and an idle return behind that.
  */
 function topbar(): HTMLElement {
-  const bar = el(`<div class="topbar"><span class="topbar__logo">${ICON.logo}</span>
+  // Mark and wordmark as one lockup, sharing a colour and an opacity so they read as a single
+  // object rather than a picture next to a word. He cannot read it; it is not for him.
+  const bar = el(`<div class="topbar"><span class="topbar__logo">${ICON.logo}<span class="topbar__word">Platebunken</span></span>
     <button class="topbar__menu" aria-label="Innstillinger / Settings">${ICON.menu}</button></div>`);
   bar.querySelector(".topbar__menu")!.addEventListener("click", openAdmin);
   return bar;
