@@ -26,3 +26,7 @@ __pycache__/
 .DS_Store
 .idea/
 *.swp
+
+# Local harness state — embeds absolute home paths
+.claude/settings.local.json
+.impeccable/config.local.json
