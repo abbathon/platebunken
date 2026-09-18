@@ -46,6 +46,33 @@
   opacity: var(--motif-opacity, 0);
 }
 #motif svg { display: block; width: 100%; height: 100%; }
+
+/* The backdrop's motion vocabulary. Themes tag elements with these classes; the timings live
+   here so `prefers-reduced-motion` is honoured in one place instead of per theme.
+
+   A drifting path slides by exactly one 80-unit wave period and repeats, which is seamless
+   only because the paths are drawn from -90 well past the right edge. Three lines at three
+   speeds give a sea with depth rather than a moving stripe. */
+#motif .drift          { animation: motif-drift var(--motif-drift) linear infinite; }
+#motif .drift--slow    { animation: motif-drift calc(var(--motif-drift) * 1.7) linear infinite; }
+#motif .drift--slower  { animation: motif-drift calc(var(--motif-drift) * 2.6) linear infinite; }
+#motif .bob            { animation: motif-bob calc(var(--motif-drift) * 0.42) ease-in-out infinite;
+                         transform-box: fill-box; transform-origin: 50% 80%; }
+#motif .twinkle,
+#motif .twinkle--b,
+#motif .twinkle--c     { animation: motif-twinkle var(--motif-drift) ease-in-out infinite; }
+#motif .twinkle--b     { animation-duration: calc(var(--motif-drift) * 0.7);
+                         animation-delay: calc(var(--motif-drift) * -0.33); }
+#motif .twinkle--c     { animation-duration: calc(var(--motif-drift) * 1.4);
+                         animation-delay: calc(var(--motif-drift) * -0.66); }
+#motif .spin           { animation: motif-spin calc(var(--motif-drift) * 9) linear infinite;
+                         transform-box: fill-box; transform-origin: 50% 50%; }
+
+@keyframes motif-drift   { to { transform: translateX(-80px); } }
+@keyframes motif-bob     { 0%, 100% { transform: translateY(0) rotate(-0.8deg); }
+                           50%      { transform: translateY(-3px) rotate(0.8deg); } }
+@keyframes motif-twinkle { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+@keyframes motif-spin    { to { transform: rotate(360deg); } }
 #app { position: relative; z-index: 1; }
 
 html, body {
@@ -245,6 +272,26 @@ html, body {
 .picker__dot:active { transform: scale(0.94); }
 @media (hover: hover) { .picker__dot:hover { border-color: var(--dot-ring); } }
 
+/* ── the caption ──────────────────────────────────────────────────
+   What is selected, in words, in the bottom gutter. Not for the child: he cannot read it and
+   never needs to, because the frame already tells him what is selected and this only ever
+   agrees with the frame. Same move as the track titles in the album view — small, dim,
+   non-functional, there for whoever is standing next to him.
+
+   Centred with a max width, so it stays clear of the page-flip buttons at either edge. Fixed
+   height whether or not it has anything to say, so the crate above it never shifts. */
+.caption {
+  position: fixed; left: 50%; bottom: 7px; transform: translateX(-50%);
+  z-index: 30; margin: 0; pointer-events: none;
+  max-width: min(62vw, 720px); height: 17px; line-height: 17px;
+  display: flex; gap: 10px; align-items: baseline; justify-content: center;
+  font-size: 13px; letter-spacing: 0.02em;
+  white-space: nowrap; overflow: hidden;
+}
+.caption__artist { font-weight: 800; color: var(--ink-dim); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.caption__title  { color: color-mix(in oklab, var(--ink-dim) 74%, var(--bg)); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.caption__year   { color: color-mix(in oklab, var(--ink-dim) 55%, var(--bg)); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+
 /* ── home ─────────────────────────────────────────────────────── */
 .home { position: fixed; left: 22px; bottom: 22px; z-index: 40; }
 
@@ -372,6 +419,8 @@ html, body {
   /* Losing the tracer must not cost him the selection, so the ring goes solid in its place. */
   .frame__rail { display: none; }
   .frame { border-color: var(--frame-ring); }
+  /* The backdrop simply stops. It carries no information, so nothing is lost with it. */
+  #motif * { animation: none !important; }
 }
 
 .track[data-focus="1"]:not([aria-current="true"]) {

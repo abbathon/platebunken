@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  DEFAULT_THEME_ID, MOTIF_MAX_OPACITY, THEMES, TOKENS, TRACER_FLOOR_MS,
+  DEFAULT_THEME_ID, MOTIF_DRIFT_FLOOR_MS, MOTIF_MAX_OPACITY, MOTIF_MOTION, THEMES, TOKENS, TRACER_FLOOR_MS,
   cornerSvg, emblemSvg, motifSvg, themeById, themeVars,
 } from "./themes.ts";
 
@@ -131,6 +131,44 @@ test("a backdrop stays a texture and never becomes a picture", () => {
   }
 });
 
+test("the backdrop moves slowly or not at all", () => {
+  // The largest moving surface in the product, in a bedroom, at night, behind the record he is
+  // trying to choose. Slow enough and it is weather; quick enough and it is a visualiser.
+  for (const t of THEMES) {
+    const ms = t.motif.driftMs;
+    assert.ok(ms === 0 || ms >= MOTIF_DRIFT_FLOOR_MS,
+      `${t.id}: backdrop drift at ${ms}ms is below the ${MOTIF_DRIFT_FLOOR_MS}ms floor`);
+    assert.equal(ms === 0, t.motif.svg === "", `${t.id}: a still backdrop and a missing one must not be the same state`);
+  }
+});
+
+test("a motif only uses motion classes the stylesheet actually defines", () => {
+  // themes.ts is pure data and cannot see the CSS. A class name typo would fail silently as a
+  // backdrop that simply never moves, which is exactly the kind of bug nobody reports.
+  const css = readFileSync(new URL("../../prototypes/crate/src/style.css", import.meta.url), "utf8");
+  for (const c of MOTIF_MOTION) {
+    assert.ok(css.includes(`#motif .${c}`), `stylesheet defines no motion for "${c}"`);
+  }
+  for (const t of THEMES) {
+    for (const m of t.motif.svg.matchAll(/class="([^"]+)"/g)) {
+      for (const c of m[1]!.split(/\s+/)) {
+        assert.ok((MOTIF_MOTION as readonly string[]).includes(c),
+          `${t.id}: motif uses class "${c}", which is not in the motion vocabulary`);
+      }
+    }
+  }
+});
+
+test("a drifting path is drawn wide enough to loop seamlessly", () => {
+  // It is shifted a whole 80-unit period and still has to cover a 0-240 viewBox at both ends
+  // of the cycle. Start it at -90 or the sea develops a visible seam every cycle.
+  for (const t of THEMES) {
+    for (const m of t.motif.svg.matchAll(/class="drift[^"]*"\s+d="M(-?[\d.]+)/g)) {
+      assert.ok(Number(m[1]) <= -80, `${t.id}: a drifting path starts at x=${m[1]}, too far right to loop`);
+    }
+  }
+});
+
 test("a plate shape never changes what is possible to hit", () => {
   // §4.5 puts a hard 76px floor under every target because tap accuracy at this age is 57%.
   // The clip path is painted on a layer inside the button; applying it to the control itself
@@ -148,6 +186,7 @@ test("themeVars emits a custom property for every token plus the frame metrics",
     assert.equal(vars["--frame-settle"], `${t.frame.settleMs}ms`);
     assert.equal(vars["--frame-tracer"], `${t.frame.tracerMs}ms`);
     assert.equal(vars["--motif-opacity"], String(t.motif.opacity));
+    assert.equal(vars["--motif-drift"], `${t.motif.driftMs}ms`);
     assert.ok(vars["--btn-plate"], `${t.id}: no plate shape`);
     assert.ok(Object.keys(vars).every((k) => k.startsWith("--")));
   }

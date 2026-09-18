@@ -89,7 +89,35 @@ export interface Motif {
   /** `0 0 240 120`, `currentColor`, drawn to be cropped — it is scaled to cover. */
   svg: string;
   opacity: number;
+  /**
+   * Base period of the backdrop's motion, ms. 0 holds it still.
+   *
+   * **Never below `MOTIF_DRIFT_FLOOR_MS`.** This is the largest moving surface in the product,
+   * in a bedroom, at night. Slow enough and it is weather; quick enough and it is a visualiser
+   * behind the record he is trying to choose. Waves take their time.
+   */
+  driftMs: number;
 }
+
+/**
+ * The shared motion vocabulary a motif may use, as class names on elements inside its SVG.
+ * The keyframes live in the stylesheet so `prefers-reduced-motion` is honoured in one place.
+ *
+ * | class | what it does |
+ * |---|---|
+ * | `drift` | slides left by one full 80-unit wave period and repeats, seamlessly |
+ * | `drift--slow`, `drift--slower` | the same, at 1.7x and 2.6x the period — parallax |
+ * | `bob` | rises, falls and rolls a little, like something floating |
+ * | `twinkle`, `twinkle--b`, `twinkle--c` | fades between dim and bright, out of phase |
+ * | `spin` | turns very slowly about its own centre |
+ *
+ * A drifting element must be drawn from -90 to at least 330 on x, because it is shifted a
+ * whole period and still has to cover a 0-240 viewBox at both ends of the cycle.
+ */
+export const MOTIF_MOTION = ["drift", "drift--slow", "drift--slower", "bob", "twinkle", "twinkle--b", "twinkle--c", "spin"] as const;
+
+/** See Motif.driftMs. Derived and deliberately unhurried, like TRACER_FLOOR_MS. */
+export const MOTIF_DRIFT_FLOOR_MS = 6000;
 
 /** The shape of a chrome button's plate. Decorative only: see §4.6 on why it never clips
  *  the button itself, which stays a full 76px box whatever shape is painted on it. */
@@ -188,28 +216,32 @@ const MOON = `
 /** Waves, with a ship riding them. */
 const SEA = `
 <g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-  <path d="M-10 88q20-14 40 0t40 0 40 0 40 0 40 0 40 0"/>
-  <path d="M-10 102q20-14 40 0t40 0 40 0 40 0 40 0 40 0"/>
-  <path d="M-10 116q20-14 40 0t40 0 40 0 40 0 40 0 40 0"/>
+  <path class="drift"        d="M-90 88q20-14 40 0t40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0"/>
+  <path class="drift--slow"  d="M-90 102q20-14 40 0t40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0"/>
+  <path class="drift--slower" d="M-90 116q20-14 40 0t40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0 40 0"/>
 </g>
-<g fill="currentColor" transform="translate(86 22) scale(0.9)">${SHIP}</g>`;
+<g class="bob">
+  <g fill="currentColor" transform="translate(86 22) scale(0.9)">${SHIP}</g>
+</g>`;
 
 /** A starfield and the edge of something large. */
 const STARS = (() => {
   // Deterministic: a fixed lattice jittered by an integer hash, so the field is even and the
-  // file does not change between builds.
-  const dots: string[] = [];
+  // file does not change between builds. Three groups, so they can twinkle out of phase —
+  // sixty-four separately animated circles would be sixty-four things to repaint.
+  const groups: string[][] = [[], [], []];
   for (let i = 0; i < 64; i++) {
     const h = (i * 2654435761) >>> 0;
     const x = ((i % 16) * 15 + (h % 13)).toFixed(0);
     const y = (Math.floor(i / 16) * 30 + ((h >>> 8) % 27)).toFixed(0);
     const r = (0.9 + ((h >>> 16) % 5) * 0.42).toFixed(2);
-    dots.push(`<circle cx="${x}" cy="${y}" r="${r}"/>`);
+    groups[i % 3]!.push(`<circle cx="${x}" cy="${y}" r="${r}"/>`);
   }
-  return `<g fill="currentColor">${dots.join("")}</g>
-<circle cx="238" cy="14" r="52" fill="none" stroke="currentColor" stroke-width="2.5"/>
-<ellipse cx="238" cy="16" rx="76" ry="16" fill="none" stroke="currentColor" stroke-width="2"
-         transform="rotate(-18 238 16)"/>`;
+  const cls = ["twinkle", "twinkle--b", "twinkle--c"];
+  return groups.map((g, i) => `<g class="${cls[i]}" fill="currentColor">${g.join("")}</g>`).join("")
+    + `<circle cx="238" cy="14" r="52" fill="none" stroke="currentColor" stroke-width="2.5"/>`
+    + `<ellipse class="spin" cx="238" cy="16" rx="76" ry="16" fill="none" stroke="currentColor" `
+    + `stroke-width="2" transform="rotate(-18 238 16)"/>`;
 })();
 
 export const THEMES: readonly Theme[] = [
@@ -230,7 +262,7 @@ export const THEMES: readonly Theme[] = [
     emblem: MOON,
     // No backdrop at all. This theme's argument is that the covers carry the room, and a
     // backdrop would be arguing with itself.
-    motif: { svg: "", opacity: 0 },
+    motif: { svg: "", opacity: 0, driftMs: 0 },
     plate: "round",
   },
   {
@@ -250,7 +282,7 @@ export const THEMES: readonly Theme[] = [
     // light travelling its edge should read as an ember crawling along carved oak.
     frame: { corner: KNOTWORK, cornerPx: 34, ringPx: 6, offsetPx: 8, settleMs: 200, tracerMs: 5200 },
     emblem: SHIP,
-    motif: { svg: SEA, opacity: 0.055 },
+    motif: { svg: SEA, opacity: 0.055, driftMs: 17000 },
     plate: "shield",
   },
   {
@@ -269,7 +301,7 @@ export const THEMES: readonly Theme[] = [
     // The fastest tracer of the three, still well above the floor.
     frame: { corner: STARBURST, cornerPx: 30, ringPx: 5, offsetPx: 7, settleMs: 140, tracerMs: 2600 },
     emblem: PLANET,
-    motif: { svg: STARS, opacity: 0.06 },
+    motif: { svg: STARS, opacity: 0.06, driftMs: 9000 },
     plate: "hex",
   },
 ];
@@ -304,6 +336,7 @@ export function themeVars(theme: Theme): Record<string, string> {
   vars["--frame-settle"] = `${theme.frame.settleMs}ms`;
   vars["--frame-tracer"] = `${theme.frame.tracerMs}ms`;
   vars["--motif-opacity"] = String(theme.motif.opacity);
+  vars["--motif-drift"] = `${theme.motif.driftMs}ms`;
   vars["--btn-plate"] = PLATE_CLIP[theme.plate];
   return vars;
 }

@@ -28,6 +28,13 @@ theme and floored at 1800 ms; `prefers-reduced-motion` removes it and makes the 
 Flipping a page sweeps the nine new sleeves in from the side you moved towards. Holding the key
 down suppresses it — that is a scrub, not a flip.
 
+The backdrop moves: waves drift at three speeds with a ship riding them, stars twinkle out of
+phase. `prefers-reduced-motion` stops all of it, and the backdrop carries no information, so
+nothing is lost with it.
+
+A line in the bottom gutter names the selected album's artist, title and year. Not for the
+child — the frame is what tells him what is selected — but useful for whoever is next to him.
+
 Show the child all three themes in a minute and watch which one he reaches for.
 
 ## Data

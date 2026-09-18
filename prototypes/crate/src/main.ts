@@ -118,6 +118,26 @@ const coverEl = (a: Album, onPlay: (a: Album) => void, which: "sm" | "lg" = "sm"
   return slot;
 };
 
+/**
+ * What is selected, in words, along the bottom edge.
+ *
+ * Deliberately not for the child. He cannot read it and never needs to — the frame tells him
+ * what is selected, and this only ever agrees with the frame. It is the same move the album
+ * view already makes with track titles: small, dim, off to one side, and non-functional, so it
+ * is there for whoever is standing next to him without asking anything of him.
+ *
+ * It lives in the bottom gutter, which §4.5 keeps clear of critical actions anyway, and it is
+ * always rendered even when empty so the line below the crate never changes height.
+ */
+function caption(a: Album | undefined): HTMLElement {
+  const bar = el(`<p class="caption" aria-hidden="true"></p>`);
+  if (!a) return bar;
+  bar.append(el(`<span class="caption__artist">${esc(a.artist.toUpperCase())}</span>`));
+  bar.append(el(`<span class="caption__title">${esc(a.title)}</span>`));
+  if (a.year) bar.append(el(`<span class="caption__year">${a.year}</span>`));
+  return bar;
+}
+
 /** Mark a slot selected and tell its frame which way the hand just moved. */
 function focusSlot(slot: HTMLElement): void {
   slot.dataset.focus = "1";
@@ -501,6 +521,9 @@ function render() {
     // In the crate only. Now playing has the home target in the same corner, and a screen that
     // is about to go dark is not a place to offer choices.
     app.append(themePicker(THEME, setTheme));
+    // Now playing prints the same three facts large; repeating them small underneath it would
+    // just be the screen talking to itself.
+    app.append(caption(ALBUMS[state.cursor]));
   }
   app.append(switcher());
 }

@@ -150,7 +150,12 @@ Four verbs, plus two toggles. Nothing else exists.
   half-faded while he moves.
 - **Append-only order.** New albums are appended, never inserted. Position `2-3` is the same album
   forever.
-- **No text.** Cover art only.
+- **No text the child needs.** Cover art only — with one line in the bottom gutter naming the
+  selected album's artist, title and year. It is not for him: he cannot read it and never needs
+  to, because the frame already says what is selected and this only ever agrees with the frame.
+  Same move as the track titles in §4.2 — small, dim, non-functional, there for whoever is
+  standing next to him. It keeps its height when it has nothing to say, so the crate above it
+  never shifts, and it sits centred and clear of the page-flip buttons at either edge.
 - Separate shelves — **new**, **recent**, **most-played** — are *additional surfaces*, never
   reorderings of the crate.
 - A **new** album appears on the new shelf, released on a trickle (a steady drip even if a dozen
@@ -255,11 +260,23 @@ only test that matters: a four-year-old who is into vikings looked at it and saw
   took three drafts: stripes and short prow posts read as a basket, then as a crown, before
   separation fixed it — posts out at the edges, a solid sail well inside them, air between the
   two. Detail is what a 40px drawing cannot spend.
-- **A backdrop.** The theme's world, filling the space the covers do not, at a few percent
-  opacity, scaled to cover and cropped. This is the only surface where a theme may be more than
-  chrome, and it is allowed precisely because it can never compete with artwork: it sits behind
-  everything and covers are opaque. `MOTIF_MAX_OPACITY` keeps it a texture rather than a
-  picture. `natt` has none, which is that theme's whole argument.
+- **A backdrop, and it moves.** The theme's world, filling the space the covers do not, at a few
+  percent opacity, scaled to cover and cropped. This is the only surface where a theme may be
+  more than chrome, and it is allowed precisely because it can never compete with artwork: it
+  sits behind everything and covers are opaque. `MOTIF_MAX_OPACITY` keeps it a texture rather
+  than a picture. `natt` has none, which is that theme's whole argument.
+
+  The waves wave — three lines drifting at three speeds, with a ship riding them; the starfield
+  twinkles in three groups out of phase and a ring turns. Motion is declared by tagging elements
+  with a small shared vocabulary (`MOTIF_MOTION`), with the timings in the stylesheet so
+  `prefers-reduced-motion` is honoured in one place. A test greps both directions, because a
+  class-name typo would fail silently as a backdrop that simply never moves.
+
+  **`MOTIF_DRIFT_FLOOR_MS` is 6000.** This is the largest moving surface in the product, in a
+  bedroom, at night, behind the record he is trying to choose. Slow enough and it is weather;
+  quick enough and it is a visualiser. A drifting path must also be drawn from `-90` well past
+  the right edge: it is shifted a whole 80-unit wave period and still has to cover the viewBox
+  at both ends of the cycle, or the sea grows a seam. Tested.
 - **A plate shape.** Round, shield, hex — the silhouette of every chrome button. It is painted
   on two clipped layers *inside* the control and never as a `clip-path` on the control itself,
   because that would clip the hit area along with the picture. §4.5 puts a hard 76 px floor
