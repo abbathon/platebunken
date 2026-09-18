@@ -2,7 +2,7 @@
 // Question: does browsing feel like flipping records, and can a 4-year-old drive it?
 import { loadLibrary, seedCount, type Album } from "./library";
 import { coverSvg } from "./cover";
-import { THEMES, applyTheme, currentTheme, frameEl, setEntryDirection } from "./theme";
+import { THEMES, applyTheme, frameEl, setEntryDirection, themeFromUrl, themePicker, type Theme } from "./theme";
 
 // ── icons: drawn, one weight, never glyphs or emoji ──────────────
 const ICON = {
@@ -27,6 +27,8 @@ const state = {
   volume: 3,        // of 7 blocks
   // Direction of the last move, so the selection frame arrives from where the hand came.
   from: { x: 0, y: 0 },
+  lastPage: 0,      // the page the crate was showing on the previous render
+  lastFlipAt: 0,    // timestamp of the last page flip, to tell a deliberate flip from a scrub
 };
 
 const PER_PAGE = 9;
@@ -61,8 +63,20 @@ warmCovers();
 
 // The theme is chrome only: background, frame, buttons. It never touches the artwork, and
 // it carries no position, so changing it cannot move anything the child has memorised.
-const THEME = currentTheme();
+// That is what makes it safe to hand him the switch.
+let THEME = themeFromUrl();
 applyTheme(THEME);
+
+function setTheme(t: Theme): void {
+  if (t.id === THEME.id) return;
+  THEME = t;
+  applyTheme(t);
+  // replaceState, not a reload: the crate must not blink, and he must not lose his place.
+  const u = new URL(location.href);
+  u.searchParams.set("theme", t.id);
+  history.replaceState(null, "", u);
+  render();
+}
 
 const app = document.getElementById("app")!;
 const variant = (): "A" | "B" | "C" =>
@@ -126,11 +140,33 @@ function wall(): HTMLElement {
   const per = PER_PAGE, pages = Math.ceil(ALBUMS.length / per);
   // The page follows the focused album, so arrow keys flip pages without a separate concept.
   state.page = Math.floor(state.cursor / per);
+
+  /**
+   * The riffle. A flipped page does not appear, it arrives: nine sleeves sweep in from the
+   * side the hand moved towards, column by column, nearest edge first. Flipping WAS the
+   * physical act this whole thing imitates, and until now it happened instantly, which made
+   * a new page indistinguishable from a redraw.
+   *
+   * A flip landing on top of the previous one is a scrub, not a flip — he is holding the key
+   * down to get somewhere. Replaying the riffle then would leave the crate permanently
+   * half-faded while he travels, so a scrub just cuts.
+   */
+  const flipped = state.page !== state.lastPage;
+  const dir = state.page > state.lastPage ? 1 : -1;
+  const at = performance.now();
+  const scrubbing = flipped && at - state.lastFlipAt < 260;
+  if (flipped) state.lastFlipAt = at;
+  state.lastPage = state.page;
+
   const root = el(`<section class="stage wall"><div class="wall__grid"></div>
     <div class="wall__foot"></div></section>`);
-  const grid = root.querySelector(".wall__grid")!;
+  const grid = root.querySelector(".wall__grid") as HTMLElement;
+  if (flipped && !scrubbing) grid.dataset.flip = dir > 0 ? "right" : "left";
   ALBUMS.slice(state.page * per, state.page * per + per).forEach((a, i) => {
     const cell = coverEl(a, play);
+    // Column order, counted from the edge the page is coming in from.
+    const col = i % COLS;
+    cell.style.setProperty("--d", String(dir > 0 ? COLS - 1 - col : col));
     if (state.page * per + i === state.cursor) focusSlot(cell);
     grid.append(cell);
   });
@@ -251,16 +287,10 @@ function nowPlaying(album: Album, track: number): HTMLElement {
 // ── switcher: obviously not part of the design being judged ──────
 const NAMES = { A: "Vegg · the wall", B: "Bunken · the stack", C: "Hylla · the shelf" };
 
-/**
- * Try another theme without a reload. The child will never do this — on the kiosk the theme
- * is config the parent sets — but showing him three in a minute is how you find out whether
- * vikings are actually the thing this week.
- */
+/** Step to the next theme. Backs both the picker's keyboard route and the prototype bar. */
 function hopTheme(d: number): void {
   const i = (THEMES.findIndex((t) => t.id === THEME.id) + d + THEMES.length) % THEMES.length;
-  const u = new URL(location.href);
-  u.searchParams.set("theme", THEMES[i]!.id);
-  location.href = u.toString();
+  setTheme(THEMES[i]!);
 }
 
 function hopVariant(d: number): void {
@@ -296,8 +326,8 @@ function switcher(): HTMLElement {
 // without reading, and Enter is unambiguous. Mouse and touch keep working alongside.
 //
 //   ← ↑ → ↓   move            Enter / Space  play        Esc  back to the crate
-//   + / -     volume          Shift + ← →    switch prototype variant
-//                             Shift + ↑ ↓    switch theme
+//   + / -     volume          *              next theme (his key; picker discs do the same)
+//                             Shift + ← →    switch prototype variant
 
 function clampCursor(n: number): number {
   return Math.max(0, Math.min(ALBUMS.length - 1, n));
@@ -374,6 +404,15 @@ function onKey(e: KeyboardEvent): void {
   if (e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
     e.preventDefault();
     hopTheme(e.key === "ArrowUp" ? -1 : 1);
+    return;
+  }
+
+  // The child's own theme key, the keyboard twin of the picker discs. On the numeric keypad
+  // recommended in §8, NumLock off leaves `*` doing nothing else, and it reaches no letter,
+  // no modifier and no TTY.
+  if (e.key === "*" || e.code === "NumpadMultiply") {
+    e.preventDefault();
+    if (state.view.name === "crate") hopTheme(1);
     return;
   }
 
@@ -459,6 +498,9 @@ function render() {
     app.append(home);
   } else {
     app.append({ A: wall, B: stack, C: shelf }[variant()]());
+    // In the crate only. Now playing has the home target in the same corner, and a screen that
+    // is about to go dark is not a place to offer choices.
+    app.append(themePicker(THEME, setTheme));
   }
   app.append(switcher());
 }

@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_THEME_ID, THEMES, TOKENS, cornerSvg, themeById, themeVars } from "./themes.ts";
+import { DEFAULT_THEME_ID, THEMES, TOKENS, TRACER_FLOOR_MS, cornerSvg, themeById, themeVars } from "./themes.ts";
 
 /** WCAG 2.x relative luminance, for hex colours only. */
 function luminance(hex: string): number {
@@ -105,12 +105,27 @@ test("themeVars emits a custom property for every token plus the frame metrics",
     for (const k of TOKENS) assert.equal(vars[`--${k}`], t.tokens[k]);
     assert.equal(vars["--frame-ring-w"], `${t.frame.ringPx}px`);
     assert.equal(vars["--frame-settle"], `${t.frame.settleMs}ms`);
+    assert.equal(vars["--frame-tracer"], `${t.frame.tracerMs}ms`);
     assert.ok(Object.keys(vars).every((k) => k.startsWith("--")));
   }
 });
 
-test("free-running motion stays opt-in", () => {
-  // Rule 4. If this ever fails, someone has made the default device animate at itself in a
-  // dark bedroom, which is the night-light §4.3 rules out.
-  assert.equal(themeById(DEFAULT_THEME_ID).frame.breath, false);
+test("the frame's tracer is never fast enough to read as a flicker", () => {
+  // This is the one rule in this file with a person on the other end of it. A bright edge
+  // moving fast, forty centimetres from a four-year-old's face, for as long as he is
+  // choosing a record, is not a style decision. Off is allowed; fast is not.
+  for (const t of THEMES) {
+    const ms = t.frame.tracerMs;
+    assert.ok(ms === 0 || ms >= TRACER_FLOOR_MS, `${t.id}: tracer at ${ms}ms is below the ${TRACER_FLOOR_MS}ms floor`);
+    assert.ok(Number.isFinite(ms) && ms >= 0, `${t.id}: tracer must be a non-negative duration`);
+  }
+});
+
+test("a theme can be fully quieted", () => {
+  // prefers-reduced-motion removes the tracer in CSS, which only leaves selection legible if
+  // the frame also carries a static ring. That ring's contrast is asserted above; this asserts
+  // the frame has real thickness to show it with.
+  for (const t of THEMES) {
+    assert.ok(t.frame.ringPx >= 4, `${t.id}: a ${t.frame.ringPx}px ring is too thin to carry selection alone`);
+  }
 });

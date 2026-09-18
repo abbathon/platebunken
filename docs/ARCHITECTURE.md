@@ -109,7 +109,7 @@ grid without reading, and Enter is unambiguous.
 
 ```
 ← ↑ → ↓   move / flip     Enter   play        Space   play / pause
-+ / −     volume          Esc     back to the crate
++ / −     volume          Esc     back to the crate      *   next theme
 ```
 
 In the crate, **← and → never wrap onto the next row.** They walk the row, and crossing the
@@ -142,6 +142,12 @@ Four verbs, plus two toggles. Nothing else exists.
 
 - A fixed page of covers with **page flip**, never infinite scroll. Crate-digging was flipping,
   not scrolling, and a crate has an end.
+- **The flip is visible.** Nine sleeves sweep in from the side the hand moved towards, column by
+  column, nearest edge first. Instant replacement made a new page indistinguishable from a
+  redraw, which threw away the one moment the whole interface is imitating. A flip landing on
+  top of the previous one is a *scrub*, not a flip — he is holding the key down to travel — and
+  cuts straight through, because replaying the sweep would leave the crate permanently
+  half-faded while he moves.
 - **Append-only order.** New albums are appended, never inserted. Position `2-3` is the same album
   forever.
 - **No text.** Cover art only.
@@ -211,23 +217,45 @@ compete with the covers it displays:
 
 1. **Chrome only.** Background, frame, buttons, page furniture. A theme never overlays, tints,
    crops, filters or decorates the artwork. The sleeve is untouchable.
-2. **The parent sets it.** The device never asks the child a question, so there is no theme
-   picker in the crate. It is config, later an admin-app setting. In the prototype it is
-   `?theme=`, and Shift + ↑↓ cycles, so three themes can be tried in front of him in a minute —
-   which is the only way to find out whether vikings are actually this week's thing.
+2. **The child sets it, and the parent sets the default.** Three discs, top-left, in every crate
+   variant, forever — and `*` on the keyboard does the same thing. This is a fifth verb, and the
+   smallest one that exists: the device looks different and nothing else changes.
+
+   It is a picker, not a question, and the difference is structural. **There is no mode.**
+   Nothing opens, nothing closes, nothing waits for an answer, and there is no state in which
+   the crate is unavailable. No text, ever: each disc wears its own theme's background, ring and
+   accent, so it shows what it does. It lives in the **edge dead zone** of §4.5 — and it is the
+   ideal occupant, because it is the one control in this product where a stray palm press costs
+   nothing at all, so a miss there is free. Its position never changes, so it never disturbs
+   what he has memorised.
 3. **A theme carries no spatial information.** No position, no layout, no target size, no key
    mapping. That is precisely what makes themes the *one* thing in this product that can be
    changed freely: switching from `natt` to `vikingtid` cannot move anything he has memorised,
    because a theme holds nothing that could move. A test enforces it.
-4. **Motion is a reply, not a performance.** The selection frame settles when a key is pressed
-   and arrives from the direction the hand moved. A ring that pulses on its own in a dark
-   bedroom is a night-light and a visualiser, both of which §4.3 rules out. Free-running drift
-   is a per-theme `breath` flag, off by default, and it yields to `prefers-reduced-motion`.
+4. **Motion has a floor and a reason.** The frame settles when a key is pressed and arrives from
+   the direction the hand moved; that part is a reply. The **tracer** — a light running the
+   frame's perimeter — is not a reply, and it is here because a frame should look alive rather
+   than like a box. It is bounded instead of banned: only on the selected sleeve, never on the
+   now-playing screen he leaves running, and **never faster than `TRACER_FLOOR_MS` (1800 ms)**.
+   That floor is the one rule in the theme module with a person on the other end of it — a
+   bright moving edge forty centimetres from a four-year-old's face, for as long as he is
+   choosing, is not a style decision. It is derived and deliberately conservative rather than
+   quoted from a standard, and a test enforces it.
 
-**The selected sleeve.** The lift and the focus state live on the slot rather than the cover, so
-the frame travels with the sleeve instead of peeling off it. Corner ornaments are four placed
-SVGs, never one stretched frame — the tile size is viewport-derived, and knotwork stretched to a
-non-square tile stops being knotwork.
+   Under `prefers-reduced-motion` the tracer disappears and the ring goes **solid** in its
+   place. Losing the animation must never cost him the selection.
+
+**The selected sleeve.** Four layers: a static ring (dim but solid — the legibility floor), the
+tracer, corner ornaments, a halo. The lift and the focus state live on the slot rather than the
+cover, so the frame travels with the sleeve instead of peeling off it. Corner ornaments are four
+placed SVGs, never one stretched frame — the tile size is viewport-derived, and knotwork
+stretched to a non-square tile stops being knotwork.
+
+The tracer is a conic gradient masked to the ring, driven by an `@property` angle. A plain custom
+property interpolates as a string and would jump rather than sweep. **UNVERIFIED on the kiosk
+hardware:** this repaints one element continuously for as long as the crate is on screen, and
+whether the host powering the display down also stops that work is a question for the laptop, not
+for a doc. Measure it during kiosk setup alongside the touch and fling checks (§12).
 
 Three themes ship: `natt` (the default; least visual world, most album art), `vikingtid` (carved
 oak, iron and ember), and `romfart` (deep space). The third exists so the second is a system

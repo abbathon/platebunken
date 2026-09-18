@@ -100,6 +100,27 @@ html, body {
   gap: clamp(12px, 1.6vw, 24px); align-content: center; justify-content: center;
 }
 .wall__foot { display: flex; justify-content: space-between; align-items: center; }
+
+/* ── the riffle ───────────────────────────────────────────────────
+   A flipped page arrives rather than appears: nine sleeves sweep in from the side the hand
+   moved towards, column by column, nearest edge first. Flipping is the physical act this
+   whole interface imitates, and instant replacement made a new page look like a redraw.
+
+   It animates `translate`, not `transform`, on purpose: the focused slot holds its lift in
+   `transform`, and the two are separate properties that compose instead of fighting. An
+   animation on `transform` would end by flattening the lift. */
+.wall__grid[data-flip="right"] { --dir: 1; }
+.wall__grid[data-flip="left"]  { --dir: -1; }
+.wall__grid[data-flip] .slot {
+  animation: page-in 230ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--d, 0) * 26ms);
+}
+/* Starts at 0.32 rather than 0: a scrub that outruns the animation should leave the crate
+   dimmer, never blank. A hole is not tappable and he cannot report a bug. */
+@keyframes page-in {
+  from { opacity: 0.32; translate: calc(var(--dir) * 58px) 0; }
+  to   { opacity: 1; translate: none; }
+}
 .pips { display: flex; gap: 10px; }
 .pip { width: 14px; height: 14px; border-radius: 999px; background: var(--edge); }
 .pip[data-on="1"] { background: var(--glow); }
@@ -162,6 +183,34 @@ html, body {
 .vol__b { width: 22px; height: 46px; border-radius: 3px; background: color-mix(in oklab, var(--bg-raised) 78%, var(--edge)); }
 .vol__b[data-on="1"] { background: var(--glow); }
 
+/* ── the theme picker ─────────────────────────────────────────────
+   Three discs, top-left, in every crate variant, forever. No panel, no open state, nothing
+   that waits for an answer — the device still never asks him a question, it just offers a
+   switch. It sits in the edge dead zone of §4.5 because it is the one control here where a
+   stray palm press costs nothing at all. */
+.picker {
+  position: fixed; left: 18px; top: 18px; z-index: 40;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.picker__dot {
+  width: var(--target); height: var(--target);   /* 76px. The floor, not a target to shave. */
+  border-radius: 999px; cursor: pointer;
+  background: var(--dot-bg);
+  border: 4px solid color-mix(in oklab, var(--dot-ring) 40%, transparent);
+  display: grid; place-items: center;
+  transition: border-color 160ms, transform 160ms;
+}
+/* The disc wears its theme rather than naming it: its background, its ring, its accent. */
+.picker__dot::after {
+  content: ""; width: 26px; height: 26px; border-radius: 999px;
+  background: var(--dot-glow);
+  transition: width 160ms, height 160ms;
+}
+.picker__dot[data-on="1"] { border-color: var(--dot-ring); }
+.picker__dot[data-on="1"]::after { width: 38px; height: 38px; }
+.picker__dot:active { transform: scale(0.94); }
+@media (hover: hover) { .picker__dot:hover { border-color: var(--dot-ring); } }
+
 /* ── home ─────────────────────────────────────────────────────── */
 .home { position: fixed; left: 22px; bottom: 22px; z-index: 40; }
 
@@ -199,11 +248,16 @@ html, body {
 
 /* ── the frame ────────────────────────────────────────────────────
    Themed chrome. It sits OUTSIDE the artwork, offset off the edge, and never over it:
-   the cover is the interface and a theme is only the room it hangs in. */
+   the cover is the interface and a theme is only the room it hangs in.
+
+   Four layers: a static ring, a light running the perimeter, corner ornaments, a halo. The
+   static ring is the floor — it is what remains when motion is off, and selection has to
+   survive every setting, because it is the only thing telling a child who cannot read which
+   sleeve is live. */
 .frame {
   position: absolute;
   inset: calc(var(--frame-offset) * -1);
-  border: var(--frame-ring-w) solid var(--frame-ring);
+  border: var(--frame-ring-w) solid color-mix(in oklab, var(--frame-ring) 42%, transparent);
   border-radius: 5px;
   color: var(--frame-orn);
   /* Soft, not a hard band: a 14px spread reads as a second rectangle stacked behind the
@@ -213,17 +267,45 @@ html, body {
   opacity: 0;
 }
 
+/* The tracer. An animatable angle needs a registered property; plain custom properties
+   interpolate as strings and would jump rather than sweep. */
+@property --tron-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* A conic gradient masked down to the ring itself: the bright arc is the light, the rest of
+   the sweep is transparent, so what you see is a segment travelling the perimeter rather than
+   a glowing box. Speed is per theme and floored in src/theme/themes.ts — a fast sweep this
+   close to a child's face is a flicker, not a style. */
+.frame__rail {
+  position: absolute;
+  inset: calc(var(--frame-ring-w) * -1);
+  border-radius: inherit;
+  padding: var(--frame-ring-w);
+  background: conic-gradient(from var(--tron-angle),
+    transparent 0 54%,
+    color-mix(in oklab, var(--frame-ring) 45%, transparent) 68%,
+    var(--frame-ring) 78%,
+    color-mix(in oklab, var(--frame-ring) 35%, white) 82%,
+    var(--frame-ring) 86%,
+    transparent 95% 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: tron-run var(--frame-tracer) linear infinite;
+  pointer-events: none;
+}
+
+@keyframes tron-run { to { --tron-angle: 360deg; } }
+
 /* Every slot renders a frame; only the focused one is shown. The grid is rebuilt on each
    keypress, so a transition would have nothing to transition from — the settle has to be a
    keyframe animation that runs when a focused frame first appears. */
 .slot[data-focus="1"] .frame {
   animation: frame-settle var(--frame-settle) cubic-bezier(0.2, 1.35, 0.4, 1) both;
 }
-.slot[data-focus="1"] .frame[data-breath="1"] {
-  animation: frame-settle var(--frame-settle) cubic-bezier(0.2, 1.35, 0.4, 1) both,
-             frame-breath 6s var(--frame-settle) infinite ease-in-out;
-}
-
 /* The frame arrives from the direction the hand moved: --from-x/--from-y are set per
    keypress. Motion tied to input is feedback; motion that runs on its own is a visualiser. */
 @keyframes frame-settle {
@@ -231,11 +313,6 @@ html, body {
   60%  { opacity: 1; }
   to   { opacity: 1; transform: none; }
 }
-@keyframes frame-breath {
-  0%, 100% { box-shadow: 0 0 30px 6px var(--frame-halo); }
-  50%      { box-shadow: 0 0 52px 16px var(--frame-halo); }
-}
-
 /* Corners are placed, never stretched: one scaled SVG would distort knotwork the moment a
    tile stops being square, and the tile size is derived from the viewport. */
 .frame__c {
@@ -256,8 +333,11 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .slot,
   .slot[data-focus="1"] .frame,
-  .slot[data-focus="1"] .frame[data-breath="1"] { animation: none; transition: none; }
+  .wall__grid[data-flip] .slot { animation: none; transition: none; }
   .slot[data-focus="1"] .frame { opacity: 1; }
+  /* Losing the tracer must not cost him the selection, so the ring goes solid in its place. */
+  .frame__rail { display: none; }
+  .frame { border-color: var(--frame-ring); }
 }
 
 .track[data-focus="1"]:not([aria-current="true"]) {

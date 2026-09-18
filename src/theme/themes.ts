@@ -14,10 +14,12 @@
  *     size, no key mapping. That is what makes themes the one thing in this product that can be
  *     changed freely: switching from `natt` to `vikingtid` cannot move anything he has
  *     memorised, because a theme holds nothing to move.
- *  4. **Motion is a reply, not a performance.** The frame reacts when he presses a key. A ring
- *     that pulses on its own in a dark bedroom is a night-light and a visualiser, both of which
- *     §4.3 rules out. `breath` exists for themes where slow drift is the point, defaults off,
- *     and yields to `prefers-reduced-motion`.
+ *  4. **Motion has a floor and a reason.** The frame settles when he presses a key, arriving from
+ *     the direction his hand moved — that part is a reply. The tracer running its perimeter is
+ *     not a reply, and it is here because the parent asked for a frame that is alive rather than
+ *     a box. It is bounded instead of banned: only on the selected sleeve, never on the screen
+ *     he leaves playing, never faster than `TRACER_FLOOR_MS`, and gone entirely under
+ *     `prefers-reduced-motion`, which also restores a solid ring so selection survives it.
  *
  * This module is pure data. It touches no DOM, so it survives the prototype it is first used in.
  */
@@ -53,9 +55,19 @@ export interface FrameSpec {
   offsetPx: number;
   /** Duration of the settle when the selection lands, ms. 0 disables it. */
   settleMs: number;
-  /** Free-running halo drift. See rule 4 — leave this off for a bedroom. */
-  breath: boolean;
+  /**
+   * Period of the light that runs the frame's perimeter, ms. 0 turns it off.
+   *
+   * **Never below TRACER_FLOOR_MS.** This is a bright moving edge roughly forty centimetres
+   * from a small child's face, for as long as he is choosing. Slow enough and it is a lit
+   * object; fast enough and it is a flicker. There is no published guidance for this exact
+   * case, so the floor is derived and deliberately conservative, and a test enforces it.
+   */
+  tracerMs: number;
 }
+
+/** See FrameSpec.tracerMs. Derived, not quoted from a standard. */
+export const TRACER_FLOOR_MS = 1800;
 
 export interface Theme {
   id: string;
@@ -66,6 +78,14 @@ export interface Theme {
   tokens: Record<TokenName, string>;
   frame: FrameSpec;
 }
+
+/** A plain corner bracket with a notch. The quietest ornament: two lines and a cut. */
+const BRACKET = `
+<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square">
+  <path d="M32 1H5.5A4.5 4.5 0 0 0 1 5.5V32"/>
+  <path d="M32 7.5H12"/>
+  <path d="M7.5 32V12"/>
+</g>`;
 
 /**
  * Carved knotwork: two nested brackets, a trefoil interlace at the elbow, two rivets.
@@ -99,8 +119,7 @@ export const THEMES: readonly Theme[] = [
       "frame-ring": "#ffb84d", "frame-orn": "#ffb84d", "frame-halo": "rgb(255 184 77 / 0.10)",
       "focus-soft": "#241f14",
     },
-    // No ornament at all: this theme's whole argument is that the covers carry the room.
-    frame: { corner: null, cornerPx: 0, ringPx: 6, offsetPx: 6, settleMs: 150, breath: false },
+    frame: { corner: BRACKET, cornerPx: 26, ringPx: 5, offsetPx: 6, settleMs: 150, tracerMs: 4200 },
   },
   {
     id: "vikingtid",
@@ -115,8 +134,9 @@ export const THEMES: readonly Theme[] = [
       "frame-ring": "#e4552b", "frame-orn": "#d8a24a", "frame-halo": "rgb(228 85 43 / 0.12)",
       "focus-soft": "#2a150c",
     },
-    // Slower and heavier than natt: the frame should land like a lid, not a blink.
-    frame: { corner: KNOTWORK, cornerPx: 34, ringPx: 6, offsetPx: 8, settleMs: 200, breath: false },
+    // Slower and heavier than natt: the frame should land like a lid, not a blink, and the
+    // light travelling its edge should read as an ember crawling along carved oak.
+    frame: { corner: KNOTWORK, cornerPx: 34, ringPx: 6, offsetPx: 8, settleMs: 200, tracerMs: 5200 },
   },
   {
     id: "romfart",
@@ -131,9 +151,8 @@ export const THEMES: readonly Theme[] = [
       "frame-ring": "#5ce1e6", "frame-orn": "#b9c6ff", "frame-halo": "rgb(92 225 230 / 0.12)",
       "focus-soft": "#0c2b2d",
     },
-    // The one theme with breath on, so the flag is exercised rather than theoretical.
-    // For a bedroom I would still turn it off; see rule 4.
-    frame: { corner: STARBURST, cornerPx: 30, ringPx: 5, offsetPx: 7, settleMs: 140, breath: true },
+    // The fastest tracer of the three, still well above the floor.
+    frame: { corner: STARBURST, cornerPx: 30, ringPx: 5, offsetPx: 7, settleMs: 140, tracerMs: 2600 },
   },
 ];
 
@@ -151,6 +170,7 @@ export function themeVars(theme: Theme): Record<string, string> {
   vars["--frame-offset"] = `${theme.frame.offsetPx}px`;
   vars["--frame-corner"] = `${theme.frame.cornerPx}px`;
   vars["--frame-settle"] = `${theme.frame.settleMs}ms`;
+  vars["--frame-tracer"] = `${theme.frame.tracerMs}ms`;
   return vars;
 }
 

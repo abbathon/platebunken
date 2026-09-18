@@ -15,14 +15,20 @@ Run: `npm run prototype`. Arrow keys drive the crate; Shift + ←→ switches va
 
 ## Themes
 
-`?theme=natt|vikingtid|romfart`, or Shift + ↑↓, or the button in the top-right bar. Themes are
+`?theme=natt|vikingtid|romfart`, the three discs top-left, `*`, or the button in the top-right
+bar. The discs and `*` are the real control — they are in the child's crate. Themes are
 chrome only — background, frame, buttons — and never touch the artwork. They live in
 `src/theme/themes.ts`, which is pure data and outlives this prototype. See ARCHITECTURE.md §4.6
 for what a theme is not allowed to do.
 
-The selected sleeve's frame is themed: a ring, optional corner ornaments, and a settle that
-arrives from the direction the hand moved. Show the child all three in a minute and watch which
-one he reacts to — that is what the switcher is for.
+The selected sleeve's frame is themed: a static ring, a light running its perimeter, corner
+ornaments, and a settle that arrives from the direction the hand moved. Tracer speed is per
+theme and floored at 1800 ms; `prefers-reduced-motion` removes it and makes the ring solid.
+
+Flipping a page sweeps the nine new sleeves in from the side you moved towards. Holding the key
+down suppresses it — that is a scrub, not a flip.
+
+Show the child all three themes in a minute and watch which one he reaches for.
 
 ## Data
 
