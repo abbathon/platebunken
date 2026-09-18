@@ -1,6 +1,6 @@
 // PROTOTYPE glue for the theme system. The themes themselves live in src/theme/themes.ts,
 // which is pure data and outlives this prototype; only the DOM work belongs here.
-import { THEMES, cornerSvg, themeById, themeVars, type Theme } from "../../../src/theme/themes.ts";
+import { THEMES, cornerSvg, emblemSvg, motifSvg, themeById, themeVars, type Theme } from "../../../src/theme/themes.ts";
 
 export { THEMES, type Theme };
 
@@ -11,6 +11,27 @@ export function applyTheme(t: Theme): void {
   const root = document.documentElement;
   for (const [k, v] of Object.entries(themeVars(t))) root.style.setProperty(k, v);
   root.dataset.theme = t.id;
+  paintMotif(t);
+}
+
+/**
+ * The backdrop: the theme's world, filling the space the covers do not.
+ *
+ * This is the only surface where a theme is allowed to be more than a palette, and it is
+ * allowed precisely because it can never compete with artwork — it sits behind everything, and
+ * covers are opaque. A few percent opacity, scaled to cover, cropped without apology.
+ *
+ * It lives outside #app so a re-render never touches it, and so it cannot end up above a sleeve
+ * by accident.
+ */
+function paintMotif(t: Theme): void {
+  const existing = document.getElementById("motif");
+  const svg = motifSvg(t);
+  if (!svg) { existing?.remove(); return; }
+  const host = existing ?? Object.assign(document.createElement("div"), { id: "motif" });
+  host.setAttribute("aria-hidden", "true");
+  host.innerHTML = svg;
+  if (!existing) document.body.prepend(host);
 }
 
 /**
@@ -71,6 +92,8 @@ export function setEntryDirection(slot: HTMLElement, dx: number, dy: number, px 
  *   in this product where a stray press costs nothing at all, so a miss here is free.
  * - **Fixed forever.** Top-left, in every crate variant, clear of the page-flip buttons. It
  *   never moves, so it never disturbs what he has memorised.
+ * - **Each disc carries its theme's emblem**, not a colour swatch. A swatch is a label he
+ *   cannot read rendered as a colour; an emblem is the thing itself.
  *
  * It is a fifth verb, and the smallest possible one: the device looks different and nothing
  * else changes.
@@ -86,10 +109,13 @@ export function themePicker(current: Theme, onPick: (t: Theme) => void): HTMLEle
     b.setAttribute("aria-label", t.label);
     b.setAttribute("aria-pressed", String(t.id === current.id));
     if (t.id === current.id) b.dataset.on = "1";
-    // The disc wears the theme rather than describing it: its background, its ring, its accent.
+    // The disc wears the theme rather than describing it: its colours, and its own mark. The
+    // mark is the part that matters — he cannot read "Vikingtid", and an orange dot does not
+    // mean vikings to anyone. A longship does.
     b.style.setProperty("--dot-bg", t.tokens.bg);
     b.style.setProperty("--dot-ring", t.tokens["frame-ring"]);
     b.style.setProperty("--dot-glow", t.tokens.glow);
+    b.innerHTML = emblemSvg(t);
     b.addEventListener("click", () => onPick(t));
     nav.append(b);
   }

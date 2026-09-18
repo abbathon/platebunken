@@ -16,8 +16,8 @@ Run: `npm run prototype`. Arrow keys drive the crate; Shift + ←→ switches va
 ## Themes
 
 `?theme=natt|vikingtid|romfart`, the three discs top-left, `*`, or the button in the top-right
-bar. The discs and `*` are the real control — they are in the child's crate. Themes are
-chrome only — background, frame, buttons — and never touch the artwork. They live in
+bar. The discs and `*` are the real control — they are in the child's crate. Each theme is an
+emblem, a backdrop and a plate shape as well as a palette — chrome only, never the artwork. They live in
 `src/theme/themes.ts`, which is pure data and outlives this prototype. See ARCHITECTURE.md §4.6
 for what a theme is not allowed to do.
 

@@ -69,6 +69,35 @@ export interface FrameSpec {
 /** See FrameSpec.tracerMs. Derived, not quoted from a standard. */
 export const TRACER_FLOOR_MS = 1800;
 
+/**
+ * A theme's own mark: a longship, a ringed planet, a moon. `0 0 64 64`, `currentColor`, and it
+ * has to survive being drawn at 40px, because that is the size it appears at on the picker disc.
+ *
+ * This is the part a pre-reader actually uses. He cannot read "Vikingtid" and an orange dot does
+ * not mean vikings to anyone; a longship does. The emblem is how he picks.
+ */
+export type Emblem = string;
+
+/**
+ * The backdrop. Fills the space the covers do not, behind everything, at a few percent opacity.
+ *
+ * This is where a theme is allowed to be a world rather than a palette — and it is the only
+ * place, because it is the one surface that never competes with artwork: covers are opaque and
+ * sit on top of it. `MOTIF_MAX_OPACITY` keeps it a texture rather than a picture.
+ */
+export interface Motif {
+  /** `0 0 240 120`, `currentColor`, drawn to be cropped — it is scaled to cover. */
+  svg: string;
+  opacity: number;
+}
+
+/** The shape of a chrome button's plate. Decorative only: see §4.6 on why it never clips
+ *  the button itself, which stays a full 76px box whatever shape is painted on it. */
+export type Plate = "round" | "shield" | "hex";
+
+/** Backdrops above this stop being texture and start being a picture behind the covers. */
+export const MOTIF_MAX_OPACITY = 0.08;
+
 export interface Theme {
   id: string;
   /** Parent-facing, Norwegian. Never shown to the child; there is no text in his UI. */
@@ -77,6 +106,9 @@ export interface Theme {
   note: string;
   tokens: Record<TokenName, string>;
   frame: FrameSpec;
+  emblem: Emblem;
+  motif: Motif;
+  plate: Plate;
 }
 
 /** A plain corner bracket with a notch. The quietest ornament: two lines and a cut. */
@@ -105,6 +137,81 @@ const STARBURST = `
 <path d="M32 3.2H6.4A3.2 3.2 0 0 0 3.2 6.4V32" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 <path d="M11 4.4 12.5 9.5 17.6 11 12.5 12.5 11 17.6 9.5 12.5 4.4 11 9.5 9.5Z" fill="currentColor"/>`;
 
+
+// ── emblems ──────────────────────────────────────────────────────────────────
+// Silhouettes, not line drawings. At 40px on a picker disc a stroked drawing turns to mush,
+// and this is the one graphic in the product a pre-reader has to recognise on sight.
+
+/**
+ * A longship.
+ *
+ * The first draft put the sail down on the deck with four narrow bars and short prow curls, and
+ * at 40px it read as a basket. What makes the silhouette a viking ship is the pair of stern and
+ * prow posts curling high above the hull, and a sail that is plainly a sail — clear of the deck,
+ * with gaps you can see. That is the whole design brief for this shape: it has to survive being
+ * small, on a disc, for someone who cannot read the word underneath it.
+ *
+ * The second draft kept the stripes and lost anyway: the posts and the sail occupied the same
+ * band, so they merged into one mass and it read as a crown. What works is separation — posts
+ * out at the edges, a solid sail well inside them, and air between the two. Stripes are detail
+ * a 40px drawing cannot spend.
+ */
+const SHIP = `
+<g fill="currentColor">
+  <path d="M5 40h54c-3 10-13 16-27 16S8 50 5 40Z"/>
+  <path d="M5 40C0 30 1 19 9 12l4 5C7 22 6.5 30 10.5 40Z"/>
+  <path d="M59 40c5-10 4-21-4-28l-4 5c6 5 6.5 13 2.5 23Z"/>
+  <rect x="30.5" y="10" width="3" height="30"/>
+  <rect x="20" y="16" width="24" height="18"/>
+</g>`;
+
+/** A ringed planet and a star. */
+const PLANET = `
+<g fill="currentColor">
+  <circle cx="28" cy="32" r="15"/>
+  <path d="M50 10.5 52.2 17l6.5 2.2-6.5 2.2L50 28l-2.2-6.6-6.5-2.2 6.5-2.2Z"/>
+</g>
+<ellipse cx="28" cy="34" rx="27" ry="8" fill="none" stroke="currentColor" stroke-width="3.2"
+         transform="rotate(-20 28 34)"/>`;
+
+/** A crescent and a star: the quietest possible mark, which is this theme's whole argument. */
+const MOON = `
+<g fill="currentColor">
+  <path d="M39 5a27 27 0 1 0 20 45A22.5 22.5 0 0 1 39 5Z"/>
+  <path d="M18 8 20 14l6 2-6 2-2 6-2-6-6-2 6-2Z"/>
+</g>`;
+
+// ── motifs ───────────────────────────────────────────────────────────────────
+// Drawn to be cropped: these are scaled to cover the screen at a few percent opacity, so
+// composition matters less than even texture. Covers are opaque and sit on top of them.
+
+/** Waves, with a ship riding them. */
+const SEA = `
+<g fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+  <path d="M-10 88q20-14 40 0t40 0 40 0 40 0 40 0 40 0"/>
+  <path d="M-10 102q20-14 40 0t40 0 40 0 40 0 40 0 40 0"/>
+  <path d="M-10 116q20-14 40 0t40 0 40 0 40 0 40 0 40 0"/>
+</g>
+<g fill="currentColor" transform="translate(86 22) scale(0.9)">${SHIP}</g>`;
+
+/** A starfield and the edge of something large. */
+const STARS = (() => {
+  // Deterministic: a fixed lattice jittered by an integer hash, so the field is even and the
+  // file does not change between builds.
+  const dots: string[] = [];
+  for (let i = 0; i < 64; i++) {
+    const h = (i * 2654435761) >>> 0;
+    const x = ((i % 16) * 15 + (h % 13)).toFixed(0);
+    const y = (Math.floor(i / 16) * 30 + ((h >>> 8) % 27)).toFixed(0);
+    const r = (0.9 + ((h >>> 16) % 5) * 0.42).toFixed(2);
+    dots.push(`<circle cx="${x}" cy="${y}" r="${r}"/>`);
+  }
+  return `<g fill="currentColor">${dots.join("")}</g>
+<circle cx="238" cy="14" r="52" fill="none" stroke="currentColor" stroke-width="2.5"/>
+<ellipse cx="238" cy="16" rx="76" ry="16" fill="none" stroke="currentColor" stroke-width="2"
+         transform="rotate(-18 238 16)"/>`;
+})();
+
 export const THEMES: readonly Theme[] = [
   {
     id: "natt",
@@ -120,6 +227,11 @@ export const THEMES: readonly Theme[] = [
       "focus-soft": "#241f14",
     },
     frame: { corner: BRACKET, cornerPx: 26, ringPx: 5, offsetPx: 6, settleMs: 150, tracerMs: 4200 },
+    emblem: MOON,
+    // No backdrop at all. This theme's argument is that the covers carry the room, and a
+    // backdrop would be arguing with itself.
+    motif: { svg: "", opacity: 0 },
+    plate: "round",
   },
   {
     id: "vikingtid",
@@ -137,6 +249,9 @@ export const THEMES: readonly Theme[] = [
     // Slower and heavier than natt: the frame should land like a lid, not a blink, and the
     // light travelling its edge should read as an ember crawling along carved oak.
     frame: { corner: KNOTWORK, cornerPx: 34, ringPx: 6, offsetPx: 8, settleMs: 200, tracerMs: 5200 },
+    emblem: SHIP,
+    motif: { svg: SEA, opacity: 0.055 },
+    plate: "shield",
   },
   {
     id: "romfart",
@@ -153,8 +268,25 @@ export const THEMES: readonly Theme[] = [
     },
     // The fastest tracer of the three, still well above the floor.
     frame: { corner: STARBURST, cornerPx: 30, ringPx: 5, offsetPx: 7, settleMs: 140, tracerMs: 2600 },
+    emblem: PLANET,
+    motif: { svg: STARS, opacity: 0.06 },
+    plate: "hex",
   },
 ];
+
+/**
+ * Plate shapes, as clip paths.
+ *
+ * These are painted on a layer *inside* the button, never applied to the button itself: a
+ * clip-path on the control would clip its hit area too, and §4.5 puts a hard 76px floor under
+ * every target because measured tap accuracy at this age is 57%. A theme may change what a
+ * control looks like. It may never change what it is possible to hit.
+ */
+const PLATE_CLIP: Record<Plate, string> = {
+  round: "circle(50%)",
+  shield: "polygon(0% 0%, 100% 0%, 100% 58%, 50% 100%, 0% 58%)",
+  hex: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
+};
 
 export const DEFAULT_THEME_ID = "natt";
 
@@ -171,6 +303,8 @@ export function themeVars(theme: Theme): Record<string, string> {
   vars["--frame-corner"] = `${theme.frame.cornerPx}px`;
   vars["--frame-settle"] = `${theme.frame.settleMs}ms`;
   vars["--frame-tracer"] = `${theme.frame.tracerMs}ms`;
+  vars["--motif-opacity"] = String(theme.motif.opacity);
+  vars["--btn-plate"] = PLATE_CLIP[theme.plate];
   return vars;
 }
 
@@ -178,4 +312,16 @@ export function themeVars(theme: Theme): Record<string, string> {
 export function cornerSvg(theme: Theme): string {
   if (!theme.frame.corner) return "";
   return `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">${theme.frame.corner}</svg>`;
+}
+
+/** The theme's mark. The thing he points at when he wants vikings. */
+export function emblemSvg(theme: Theme): string {
+  return `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">${theme.emblem}</svg>`;
+}
+
+/** The backdrop, scaled to cover and cropped. "" for themes that have none. */
+export function motifSvg(theme: Theme): string {
+  if (!theme.motif.svg) return "";
+  return `<svg viewBox="0 0 240 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true" `
+    + `focusable="false">${theme.motif.svg}</svg>`;
 }

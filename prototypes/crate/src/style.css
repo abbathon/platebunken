@@ -34,6 +34,20 @@
 
 * { box-sizing: border-box; }
 
+/* ── the backdrop ─────────────────────────────────────────────────
+   A theme's world, filling the space the covers do not. Behind everything, a few percent
+   opacity, scaled to cover and cropped. It can never compete with artwork because covers are
+   opaque and sit on top of it — which is exactly why this is the one surface where a theme is
+   allowed to be more than a palette. */
+#motif {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none;
+  color: var(--ink);
+  opacity: var(--motif-opacity, 0);
+}
+#motif svg { display: block; width: 100%; height: 100%; }
+#app { position: relative; z-index: 1; }
+
 html, body {
   margin: 0; height: 100%;
   background: var(--bg);
@@ -71,20 +85,36 @@ html, body {
 .cover:active { transform: translateY(-1px) scale(0.985); }
 
 /* ── controls ─────────────────────────────────────────────────── */
+/* The control is a plain box at the 76px floor. Its SHAPE is painted on two clipped layers
+   inside it — an outline plate and a fill plate — and never with a clip-path on the button
+   itself, which would clip the hit area along with the picture. A theme may change what a
+   control looks like; it may never change what it is possible to hit. */
 .btn {
+  position: relative; isolation: isolate;
   display: grid; place-items: center;
   min-width: var(--target); min-height: var(--target);
-  border: 1px solid var(--edge); border-radius: 999px;
-  background: var(--bg-raised); color: var(--ink);
-  cursor: pointer; transition: background 140ms, transform 140ms, border-color 140ms;
+  border: 0; padding: 0; background: none; color: var(--ink);
+  cursor: pointer; transition: transform 140ms;
 }
-.btn svg { width: 34px; height: 34px; fill: currentColor; }
+.btn::before, .btn::after {
+  content: ""; position: absolute; pointer-events: none;
+  clip-path: var(--btn-plate, circle(50%));
+  transition: background 140ms;
+}
+.btn::before { inset: 0; background: var(--edge); }                    /* the outline */
+.btn::after  { inset: 2px; background: var(--bg-raised); }             /* the face */
+.btn svg { position: relative; z-index: 1; width: 34px; height: 34px; fill: currentColor; }
 .btn:active { transform: scale(0.94); }
-@media (hover: hover) { .btn:hover { background: color-mix(in oklab, var(--bg-raised) 86%, var(--ink)); border-color: color-mix(in oklab, var(--edge) 72%, var(--ink)); } }
+@media (hover: hover) {
+  .btn:hover::before { background: color-mix(in oklab, var(--edge) 66%, var(--ink)); }
+  .btn:hover::after  { background: color-mix(in oklab, var(--bg-raised) 86%, var(--ink)); }
+}
 .btn--lg { min-width: 108px; min-height: 108px; }
 .btn--lg svg { width: 48px; height: 48px; }
-.btn--play { background: var(--glow); color: var(--on-glow); border-color: transparent; }
-@media (hover: hover) { .btn--play:hover { background: color-mix(in oklab, var(--glow) 86%, white); } }
+.btn--play { color: var(--on-glow); }
+.btn--play::before { background: color-mix(in oklab, var(--glow) 70%, black); }
+.btn--play::after  { background: var(--glow); }
+@media (hover: hover) { .btn--play:hover::after { background: color-mix(in oklab, var(--glow) 86%, white); } }
 .btn[disabled] { opacity: 0.28; pointer-events: none; }
 
 /* Edge dead-zones: children press with the whole finger pad, often at an angle. */
@@ -200,14 +230,18 @@ html, body {
   display: grid; place-items: center;
   transition: border-color 160ms, transform 160ms;
 }
-/* The disc wears its theme rather than naming it: its background, its ring, its accent. */
-.picker__dot::after {
-  content: ""; width: 26px; height: 26px; border-radius: 999px;
-  background: var(--dot-glow);
-  transition: width 160ms, height 160ms;
+/* The disc wears its theme rather than naming it: its colours, and its own emblem. The
+   emblem is the part that matters. A colour swatch is a label he cannot read, rendered as a
+   colour; a longship is the thing itself. */
+.picker__dot svg {
+  display: block; width: 40px; height: 40px;
+  color: var(--dot-glow);
+  opacity: 0.55;
+  transition: opacity 160ms, transform 160ms;
 }
 .picker__dot[data-on="1"] { border-color: var(--dot-ring); }
-.picker__dot[data-on="1"]::after { width: 38px; height: 38px; }
+.picker__dot[data-on="1"] svg { opacity: 1; transform: scale(1.14); }
+@media (hover: hover) { .picker__dot:hover svg { opacity: 1; } }
 .picker__dot:active { transform: scale(0.94); }
 @media (hover: hover) { .picker__dot:hover { border-color: var(--dot-ring); } }
 

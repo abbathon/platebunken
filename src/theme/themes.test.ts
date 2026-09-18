@@ -7,7 +7,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_THEME_ID, THEMES, TOKENS, TRACER_FLOOR_MS, cornerSvg, themeById, themeVars } from "./themes.ts";
+import { readFileSync } from "node:fs";
+import {
+  DEFAULT_THEME_ID, MOTIF_MAX_OPACITY, THEMES, TOKENS, TRACER_FLOOR_MS,
+  cornerSvg, emblemSvg, motifSvg, themeById, themeVars,
+} from "./themes.ts";
 
 /** WCAG 2.x relative luminance, for hex colours only. */
 function luminance(hex: string): number {
@@ -99,6 +103,43 @@ test("corner ornaments and their size agree", () => {
   }
 });
 
+test("every theme has an emblem, because that is how a pre-reader picks one", () => {
+  // He cannot read "Vikingtid", and an orange dot does not mean vikings to anybody. The
+  // emblem is the only part of a theme he actually operates.
+  for (const t of THEMES) {
+    assert.ok(t.emblem.trim().length > 0, `theme "${t.id}" has no emblem`);
+    assert.match(emblemSvg(t), /viewBox="0 0 64 64"/, `${t.id}: emblem must use the 64x64 box`);
+    assert.ok(!/fill="#|stroke="#/.test(t.emblem), `${t.id}: emblem must use currentColor`);
+    // Silhouettes, not line art: a stroked drawing turns to mush at 40px on a picker disc.
+    assert.ok(/fill="currentColor"/.test(t.emblem), `${t.id}: emblem should carry filled shapes`);
+  }
+});
+
+test("a backdrop stays a texture and never becomes a picture", () => {
+  for (const t of THEMES) {
+    assert.ok(t.motif.opacity >= 0 && t.motif.opacity <= MOTIF_MAX_OPACITY,
+      `${t.id}: motif at ${t.motif.opacity} exceeds the ${MOTIF_MAX_OPACITY} ceiling`);
+    // An invisible drawing and a missing one must not be describable two ways.
+    assert.equal(t.motif.svg === "", t.motif.opacity === 0, `${t.id}: motif svg/opacity disagree`);
+    if (t.motif.svg) {
+      assert.match(motifSvg(t), /viewBox="0 0 240 120"/, `${t.id}: motif must use the 240x120 box`);
+      assert.match(motifSvg(t), /slice/, `${t.id}: motif is scaled to cover, so it must slice`);
+      assert.ok(!/fill="#|stroke="#/.test(t.motif.svg), `${t.id}: motif must use currentColor`);
+    } else {
+      assert.equal(motifSvg(t), "");
+    }
+  }
+});
+
+test("a plate shape never changes what is possible to hit", () => {
+  // §4.5 puts a hard 76px floor under every target because tap accuracy at this age is 57%.
+  // The clip path is painted on a layer inside the button; applying it to the control itself
+  // would clip the hit area with it. If this ever ends up on `.btn`, the floor is gone.
+  const css = readFileSync(new URL("../../prototypes/crate/src/style.css", import.meta.url), "utf8");
+  const onControl = /\.btn\s*\{[^}]*clip-path/.test(css) || /\.picker__dot\s*\{[^}]*clip-path/.test(css);
+  assert.equal(onControl, false, "clip-path must be on the plate layer, never on the control");
+});
+
 test("themeVars emits a custom property for every token plus the frame metrics", () => {
   for (const t of THEMES) {
     const vars = themeVars(t);
@@ -106,6 +147,8 @@ test("themeVars emits a custom property for every token plus the frame metrics",
     assert.equal(vars["--frame-ring-w"], `${t.frame.ringPx}px`);
     assert.equal(vars["--frame-settle"], `${t.frame.settleMs}ms`);
     assert.equal(vars["--frame-tracer"], `${t.frame.tracerMs}ms`);
+    assert.equal(vars["--motif-opacity"], String(t.motif.opacity));
+    assert.ok(vars["--btn-plate"], `${t.id}: no plate shape`);
     assert.ok(Object.keys(vars).every((k) => k.startsWith("--")));
   }
 });

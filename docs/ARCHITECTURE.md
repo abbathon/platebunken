@@ -216,7 +216,8 @@ A theme is bounded hard, because PRODUCT.md is explicit that the product's visua
 compete with the covers it displays:
 
 1. **Chrome only.** Background, frame, buttons, page furniture. A theme never overlays, tints,
-   crops, filters or decorates the artwork. The sleeve is untouchable.
+   crops, filters or decorates the artwork. The sleeve is untouchable — and that includes the
+   procedural fallback cover, which stands in for album art and so is not a theme surface.
 2. **The child sets it, and the parent sets the default.** Three discs, top-left, in every crate
    variant, forever — and `*` on the keyboard does the same thing. This is a fifth verb, and the
    smallest one that exists: the device looks different and nothing else changes.
@@ -244,6 +245,26 @@ compete with the covers it displays:
 
    Under `prefers-reduced-motion` the tracer disappears and the ring goes **solid** in its
    place. Losing the animation must never cost him the selection.
+
+**A theme is three things, not a palette.** Colour alone was the first attempt and it failed the
+only test that matters: a four-year-old who is into vikings looked at it and saw an orange dot.
+
+- **An emblem.** A longship, a ringed planet, a moon. `0 0 64 64`, `currentColor`, and it has to
+  survive being drawn at 40px, because that is its size on the picker disc — the one graphic in
+  the product a pre-reader has to recognise on sight. Silhouettes, not line art. The longship
+  took three drafts: stripes and short prow posts read as a basket, then as a crown, before
+  separation fixed it — posts out at the edges, a solid sail well inside them, air between the
+  two. Detail is what a 40px drawing cannot spend.
+- **A backdrop.** The theme's world, filling the space the covers do not, at a few percent
+  opacity, scaled to cover and cropped. This is the only surface where a theme may be more than
+  chrome, and it is allowed precisely because it can never compete with artwork: it sits behind
+  everything and covers are opaque. `MOTIF_MAX_OPACITY` keeps it a texture rather than a
+  picture. `natt` has none, which is that theme's whole argument.
+- **A plate shape.** Round, shield, hex — the silhouette of every chrome button. It is painted
+  on two clipped layers *inside* the control and never as a `clip-path` on the control itself,
+  because that would clip the hit area along with the picture. §4.5 puts a hard 76 px floor
+  under every target. **A theme may change what a control looks like; it may never change what
+  it is possible to hit.** A test greps the stylesheet to keep it that way.
 
 **The selected sleeve.** Four layers: a static ring (dim but solid — the legibility floor), the
 tracer, corner ornaments, a halo. The lift and the focus state live on the slot rather than the
