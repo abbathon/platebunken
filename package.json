@@ -5,7 +5,8 @@
   "scripts": {
     "prototype": "vite prototypes/crate --open",
     "smoke": "node --env-file=.env scripts/smoke.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "ma:user": "node --env-file=.env scripts/ma-user.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
