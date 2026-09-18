@@ -1,0 +1,287 @@
+/**
+ * The approved set — the only thing the child's crate is ever allowed to read from.
+ *
+ * The gate, stated once: an album reaches the crate only by being suggested, then approved.
+ * `approve()` refuses an album that was never in the queue, so there is no function in this
+ * module that can put music in front of the child without a person having seen it first.
+ * That is ARCHITECTURE.md §5's "architectural boundary, not a setting", made literal.
+ */
+import type { DatabaseSync } from "node:sqlite";
+import type { Album } from "../ma/types.ts";
+import { coverProxyId } from "../ma/images.ts";
+
+export type CandidateSource = "seed" | "similar" | "chart" | "request";
+
+export interface AlbumInput {
+  uri: string;
+  provider: string;
+  itemId: string;
+  artist: string;
+  title: string;
+  year?: number | null;
+  mbid?: string | null;
+  coverProxyId?: string | null;
+  /** undefined and null both mean unknown. Never pass false for "no warning present". */
+  explicit?: boolean | null;
+}
+
+export interface StoredAlbum {
+  uri: string;
+  provider: string;
+  itemId: string;
+  artist: string;
+  title: string;
+  year: number | null;
+  mbid: string | null;
+  coverProxyId: string | null;
+  explicit: boolean | null;
+}
+
+/**
+ * One slot in the crate. `album` is null for a withdrawn slot, which renders as an empty
+ * tile — callers must not compact this array. The gap is the point: it is what keeps every
+ * position after it exactly where the child left it.
+ */
+export interface CrateSlot {
+  position: number;
+  album: StoredAlbum | null;
+}
+
+export interface QueueEntry {
+  album: StoredAlbum;
+  source: CandidateSource;
+  sourceDetail: string | null;
+  suggestedAt: string;
+  flags: { kind: string; detail: string | null; source: string }[];
+}
+
+const now = () => new Date().toISOString();
+const bool = (v: boolean | null | undefined) => (v === null || v === undefined ? null : v ? 1 : 0);
+
+const toAlbum = (r: Record<string, unknown>): StoredAlbum => ({
+  uri: r.uri as string,
+  provider: r.provider as string,
+  itemId: r.item_id as string,
+  artist: r.artist as string,
+  title: r.title as string,
+  year: (r.year as number | null) ?? null,
+  mbid: (r.mbid as string | null) ?? null,
+  coverProxyId: (r.cover_proxy_id as string | null) ?? null,
+  explicit: r.explicit === null || r.explicit === undefined ? null : r.explicit === 1,
+});
+
+/** Music Assistant's album shape, narrowed to what the store keeps. */
+export function fromMassAlbum(a: Album): AlbumInput {
+  return {
+    uri: a.uri,
+    provider: a.provider ?? "library",
+    itemId: a.item_id,
+    // "[unknown]" — brackets included — is what a tag-less rip comes through as.
+    artist: a.artists?.[0]?.name ?? "",
+    title: a.name,
+    year: a.year ?? null,
+    coverProxyId: coverProxyId(a),
+    explicit: a.metadata?.explicit ?? null,
+  };
+}
+
+export function ensureProfile(db: DatabaseSync, id: string, label: string): void {
+  db.prepare(
+    `INSERT INTO profile (id, label, created_at) VALUES (?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET label = excluded.label`,
+  ).run(id, label, now());
+}
+
+/**
+ * Record an album we know about. This is not approval and does not touch the crate.
+ * Re-running keeps first_seen and refreshes the metadata, so a later beets pass that
+ * finally gives an album artwork updates it in place without disturbing its position.
+ */
+export function upsertAlbum(db: DatabaseSync, a: AlbumInput): void {
+  db.prepare(
+    `INSERT INTO album (uri, provider, item_id, artist, title, year, mbid, cover_proxy_id, explicit, first_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(uri) DO UPDATE SET
+       provider = excluded.provider, item_id = excluded.item_id,
+       artist = excluded.artist, title = excluded.title, year = excluded.year,
+       mbid = COALESCE(excluded.mbid, album.mbid),
+       cover_proxy_id = excluded.cover_proxy_id,
+       explicit = COALESCE(excluded.explicit, album.explicit)`,
+  ).run(
+    a.uri, a.provider, a.itemId, a.artist, a.title,
+    a.year ?? null, a.mbid ?? null, a.coverProxyId ?? null, bool(a.explicit), now(),
+  );
+}
+
+export function getAlbum(db: DatabaseSync, uri: string): StoredAlbum | null {
+  const r = db.prepare(`SELECT * FROM album WHERE uri = ?`).get(uri) as Record<string, unknown> | undefined;
+  return r ? toAlbum(r) : null;
+}
+
+/** Put an album into the review queue. Idempotent per (album, source). */
+export function suggest(
+  db: DatabaseSync,
+  uri: string,
+  source: CandidateSource,
+  sourceDetail: string | null = null,
+): void {
+  db.prepare(
+    `INSERT INTO candidate (uri, source, source_detail, suggested_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(uri, source) DO NOTHING`,
+  ).run(uri, source, sourceDetail, now());
+}
+
+/** Advisory only. Nothing in this module reads flags to make a decision. */
+export function addFlag(db: DatabaseSync, uri: string, kind: string, source: string, detail: string | null = null): void {
+  db.prepare(
+    `INSERT INTO flag (uri, kind, detail, source) VALUES (?, ?, ?, ?)
+     ON CONFLICT(uri, kind) DO UPDATE SET detail = excluded.detail, source = excluded.source`,
+  ).run(uri, kind, detail, source);
+}
+
+/** What the parent sees on their phone. Flagged albums first — sorted, never filtered. */
+export function reviewQueue(db: DatabaseSync, limit = 50): QueueEntry[] {
+  const rows = db.prepare(
+    `SELECT c.source, c.source_detail, c.suggested_at, a.*
+       FROM candidate c JOIN album a ON a.uri = c.uri
+      WHERE c.decision IS NULL
+      ORDER BY (SELECT COUNT(*) FROM flag f WHERE f.uri = c.uri) DESC, c.suggested_at ASC
+      LIMIT ?`,
+  ).all(limit) as Record<string, unknown>[];
+  const flags = db.prepare(`SELECT kind, detail, source FROM flag WHERE uri = ?`);
+  return rows.map((r) => ({
+    album: toAlbum(r),
+    source: r.source as CandidateSource,
+    sourceDetail: (r.source_detail as string | null) ?? null,
+    suggestedAt: r.suggested_at as string,
+    flags: flags.all(r.uri as string) as { kind: string; detail: string | null; source: string }[],
+  }));
+}
+
+/**
+ * The gate. Approving does not release: the album is in the crate's future, not yet in the
+ * crate. `release()` decides when it appears, so a dozen approvals on a Sunday still arrive
+ * one at a time.
+ *
+ * Throws if the album was never suggested. That refusal is the boundary — it is why no
+ * caller can reach the child's crate by inserting an album directly.
+ */
+export function approve(db: DatabaseSync, profileId: string, uri: string): void {
+  const seen = db.prepare(`SELECT 1 FROM candidate WHERE uri = ?`).get(uri);
+  if (!seen) throw new Error(`Refusing to approve ${uri}: it was never in the review queue.`);
+  const t = now();
+  db.exec("BEGIN");
+  try {
+    db.prepare(`UPDATE candidate SET decision = 'approved', decided_at = ? WHERE uri = ? AND decision IS NULL`).run(t, uri);
+    db.prepare(
+      `INSERT INTO approved (profile_id, uri, approved_at) VALUES (?, ?, ?)
+       ON CONFLICT(profile_id, uri) DO NOTHING`,
+    ).run(profileId, uri, t);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+/** Rejection closes the queue entries. It never touches an already-approved album. */
+export function reject(db: DatabaseSync, uri: string): void {
+  db.prepare(`UPDATE candidate SET decision = 'rejected', decided_at = ? WHERE uri = ? AND decision IS NULL`)
+    .run(now(), uri);
+}
+
+/**
+ * Release up to `limit` approved albums into the crate, oldest approval first, assigning
+ * each the next position. Call it once a day with NEW_SHELF_TRICKLE_PER_DAY; call it with
+ * the full count when seeding the initial crate, where there is nothing to trickle into.
+ *
+ * Returns the albums that became visible.
+ */
+export function release(db: DatabaseSync, profileId: string, limit: number): StoredAlbum[] {
+  if (limit <= 0) return [];
+  const due = db.prepare(
+    // rowid breaks the tie, not uri: a batch approved inside the same millisecond must
+    // enter the crate in the order the parent approved it, not in alphabetical order.
+    `SELECT uri FROM approved WHERE profile_id = ? AND position IS NULL
+      ORDER BY approved_at ASC, rowid ASC LIMIT ?`,
+  ).all(profileId, limit) as { uri: string }[];
+  if (due.length === 0) return [];
+
+  const t = now();
+  const out: StoredAlbum[] = [];
+  db.exec("BEGIN");
+  try {
+    // Never MAX(position)+1 off a compacted set: withdrawn slots keep their numbers, so the
+    // next position must always be past the highest ever issued.
+    let next = Number(
+      (db.prepare(`SELECT COALESCE(MAX(position) + 1, 0) AS n FROM approved WHERE profile_id = ?`)
+        .get(profileId) as { n: number }).n,
+    );
+    const set = db.prepare(`UPDATE approved SET position = ?, released_at = ? WHERE profile_id = ? AND uri = ?`);
+    for (const { uri } of due) {
+      set.run(next++, t, profileId, uri);
+      out.push(getAlbum(db, uri)!);
+    }
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+  return out;
+}
+
+/**
+ * The crate, in order, gaps included. Index N of the returned array is position N; a slot
+ * whose album is null was withdrawn and must stay empty.
+ */
+export function crate(db: DatabaseSync, profileId: string): CrateSlot[] {
+  const rows = db.prepare(
+    `SELECT p.position, a.*, p.withdrawn_at
+       FROM approved p JOIN album a ON a.uri = p.uri
+      WHERE p.profile_id = ? AND p.position IS NOT NULL
+      ORDER BY p.position ASC`,
+  ).all(profileId) as Record<string, unknown>[];
+
+  const slots: CrateSlot[] = [];
+  for (const r of rows) {
+    const position = Number(r.position);
+    // Defensive: a hole here would mean a position was issued and its row lost, which the
+    // triggers forbid. Render it as empty rather than letting the array index drift.
+    while (slots.length < position) slots.push({ position: slots.length, album: null });
+    slots.push({ position, album: r.withdrawn_at ? null : toAlbum(r) });
+  }
+  return slots;
+}
+
+/** Take an album back. The slot stays, and stays empty, forever. */
+export function withdraw(db: DatabaseSync, profileId: string, uri: string): void {
+  db.prepare(`UPDATE approved SET withdrawn_at = ? WHERE profile_id = ? AND uri = ? AND withdrawn_at IS NULL`)
+    .run(now(), profileId, uri);
+}
+
+export interface Counts {
+  albums: number;
+  pending: number;
+  approved: number;
+  inCrate: number;
+  withdrawn: number;
+  waitingToRelease: number;
+  /** Approved albums with no artwork. In a cover-art interface these are invisible albums. */
+  invisible: number;
+}
+
+export function counts(db: DatabaseSync, profileId: string): Counts {
+  const one = (sql: string, ...args: (string | number)[]) =>
+    Number((db.prepare(sql).get(...args) as { n: number }).n);
+  return {
+    albums: one(`SELECT COUNT(*) AS n FROM album`),
+    pending: one(`SELECT COUNT(*) AS n FROM candidate WHERE decision IS NULL`),
+    approved: one(`SELECT COUNT(*) AS n FROM approved WHERE profile_id = ?`, profileId),
+    inCrate: one(`SELECT COUNT(*) AS n FROM approved WHERE profile_id = ? AND position IS NOT NULL AND withdrawn_at IS NULL`, profileId),
+    withdrawn: one(`SELECT COUNT(*) AS n FROM approved WHERE profile_id = ? AND withdrawn_at IS NOT NULL`, profileId),
+    waitingToRelease: one(`SELECT COUNT(*) AS n FROM approved WHERE profile_id = ? AND position IS NULL`, profileId),
+    invisible: one(
+      `SELECT COUNT(*) AS n FROM approved p JOIN album a ON a.uri = p.uri
+        WHERE p.profile_id = ? AND a.cover_proxy_id IS NULL`, profileId),
+  };
+}

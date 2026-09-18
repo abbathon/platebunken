@@ -7,7 +7,9 @@
     "smoke": "node --env-file=.env scripts/smoke.ts",
     "typecheck": "tsc --noEmit",
     "ma:user": "node --env-file=.env scripts/ma-user.ts",
-    "snapshot": "node --env-file=.env scripts/snapshot.ts"
+    "snapshot": "node --env-file=.env scripts/snapshot.ts",
+    "test": "node --test 'src/**/*.test.ts'",
+    "db:seed": "node --env-file=.env scripts/db-seed.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

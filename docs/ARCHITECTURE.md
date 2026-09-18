@@ -171,9 +171,16 @@ The track list, rendered as a number line — the best-evidenced pedagogic featu
 
 - Cover near-fullscreen, square, uncropped, no text overlaid.
 - Band name **once**, large, centred, plain capitals — below the art, never a control.
-- After ~10 s the screen dims. **At night it goes fully off**, with music still playable: he must
-  be able to start a record in the dark without lighting the room.
-- Any input wakes it. No screensaver, no clock, no visualiser.
+- **The host owns blanking, not the app.** The display is always on, blanks after a period, then
+  powers down — `xset s blank` + `xset dpms` on the Debian kiosk. The app implements no idle
+  timer, no dim, no screensaver, no clock and no visualiser.
+- Music keeps playing while the screen is off, because playback lives in Music Assistant and not
+  in the page. The browser therefore holds no wake lock and never fights the host's blanking —
+  a free consequence of §3's decision to keep the laptop a stateless UI.
+- **Do not install a screensaver program, and never a locking one.** X's own blanking hands the
+  waking keypress on to the page, so the first press both lights the screen and does what he
+  meant; a screensaver or lock swallows it, and a press that does nothing is exactly the
+  disappointment principle 1 is about. UNVERIFIED on this hardware — confirm during kiosk setup.
 
 ### 4.4 Getting home
 
@@ -231,6 +238,49 @@ the parent's existing *arr stack; the admin app offers a hand-off rather than do
 itself. Qobuz's ToS licenses streaming *"without authorization to download"*. Cover art target
 1000 px is comfortable (`beets`: `minwidth: 1000`, `enforce_ratio: no` — *Master of Puppets* is
 2500×2200).
+
+### 5.1 The store
+
+`src/store/` — SQLite via Node's built-in `node:sqlite`. No dependency: a kiosk expected to run
+for a decade should not carry a native addon that needs rebuilding on every Node upgrade.
+
+Five tables. `album` is everything we know of; `candidate` is the review queue; `flag` holds
+advisory annotations; `approved` is the crate. The gate is a function that refuses:
+`approve()` throws on an album that was never suggested, so no code path can reach the child's
+crate without a person having seen the album first.
+
+**Two invariants are database triggers, not application code.** A rule that lives only in a
+function is a rule the next code path walks around.
+
+- A `position` may be filled once, from `NULL`, and never changes again.
+- Rows in `approved` are never deleted.
+
+**Position is assigned at release, not at approval.** Approving puts an album in the crate's
+future; the trickle (§4.1) decides when it arrives. A dozen approvals on a Sunday still reach
+the child one at a time.
+
+**A withdrawn album leaves its slot empty forever.** The parent can take an album back, but the
+crate must not flow up into the gap — that would move every position after it, which is
+principle 2. One empty tile is cheap. Re-flowing costs the child everything he has memorised.
+
+**`approved` is keyed by profile.** There is one profile today. There is a second child, seven
+years older, and the schema exists now because adding it later would mean renumbering an
+append-only structure, which the triggers correctly refuse. The child's UI never mentions it and
+never asks who is using the device.
+
+**Album identity.** `uri` is the Music Assistant handle and the thing we play, but a `library://`
+uri is a row id in MA's own database. `artist`, `title` and `mbid` are stored alongside it so an
+approved album can be re-resolved if that library is ever rebuilt. Losing an approved album
+silently is worse than any duplicate.
+
+**Seeding is the one automatic approval,** and the justification is narrow: the parent built the
+seed playlist by hand, so the playlist *is* the act of approval. `scripts/db-seed.ts` reads the
+playlist twice and refuses to write if the two reads disagree — a provider playlist can return a
+partial answer while MA is still syncing, and a partial read would freeze a wrong order into an
+append-only crate.
+
+`npm test` covers the invariants above. They are the part of this system where a regression is
+invisible until it has already cost the child his map of his own music.
 
 ---
 
@@ -421,7 +471,8 @@ Development happens on macOS; the Linux laptop is a deployment target, not a dev
 1. MA client — connect, list albums, play one to `KID_ROOM`. Prove the whole path end to end.
 2. The crate: cover grid, page flip, tap to play. Hard-coded album list.
 3. Now playing: cover, transport, volume blocks, dim.
-4. SQLite + approved-set model; the crate reads from it.
+4. SQLite + approved-set model; the crate reads from it. **Done** (`src/store/`, §5.1) — the
+   store and the gate exist and are tested; wiring the prototype crate to it is part of step 2.
 5. Album view: the number-line track list.
 6. Admin app + review queue.
 7. Curation worker: seed → suggestions → annotations → queue.
