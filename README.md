@@ -10,7 +10,7 @@ It does four things: **browse, play, volume, skip.** It refuses the fifth.
 
 ## Status
 
-Design phase. Nothing is built yet. See [`docs/DESIGN.md`](docs/DESIGN.md).
+Design phase. See [`PRODUCT.md`](PRODUCT.md) for product truth and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the technical design.
 
 ## Shape
 
@@ -32,7 +32,7 @@ Five documents, every claim cited to a primary source, everything unverifiable m
 - [`docs/research/02-prior-art-kiosk-ui.md`](docs/research/02-prior-art-kiosk-ui.md) — kids' music players, cover-art UIs, Linux kiosk, child UX
 - [`docs/research/03-discovery-and-filtering.md`](docs/research/03-discovery-and-filtering.md) — similar-artist APIs, AI-slop and NSBM filtering, acquisition
 - [`docs/research/04-pedagogy.md`](docs/research/04-pedagogy.md) — numerals, literacy, and what not to teach
-- `docs/research/05-klipsch-local-audio.md` — local audio path and volume ceiling *(pending)*
+- [`docs/research/05-klipsch-local-audio.md`](docs/research/05-klipsch-local-audio.md) — local audio path, volume ceiling
 
 ## Configuration
 

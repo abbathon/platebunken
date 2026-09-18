@@ -215,22 +215,67 @@ itself. Qobuz's ToS licenses streaming *"without authorization to download"*. Co
 
 Two independent paths with different failure modes. Built one at a time; Klipsch likely primary.
 
-**A — Klipsch R-14PM**, wired to the laptop. No Sonos dependency, no LAN-API risk, and a physical
-volume knob.
+**A — Klipsch R-14PM**, wired to the laptop over **USB** (class-compliant, no driver, better than
+the laptop's own headphone DAC). No Sonos dependency and no LAN-API risk.
 **B — Sonos Play:1** over the network. Survives the laptop dying.
 
-**Volume safety.** The child may use the Klipsch knob freely. The ceiling is therefore enforced
-*upstream*: the laptop's output is capped in software and calibrated so that **even at knob-max the
-level at the pillow is safe**. The knob becomes a pure attenuator. On the Sonos path, MA's
-`max_volume` (ceiling 50) does the same job and re-clamps external changes — though it is a
-corrective loop, not a limiter, so there is a brief window before it snaps back.
+### 7.1 The knob is not a child control
 
-**Calibrate with an SPL meter at the pillow.** This is not optional and not derivable: Sonos'
-volume limit is proportional rather than a dB cap, the WHO/ITU figures (75 dB / 40 h for children)
-are headphone-derived and do not transfer to a room speaker, and neither Yoto, Tonies nor Hörbert
-publishes a maximum SPL.
+The R-14PM's `VOLUME/SOURCE` control is on the **rear panel**, on the same face as the mains inlet
+and speaker terminals — there is no front-baffle control at all. It is also **push-to-cycle-source**,
+so a child turning it eventually changes the input and gets silence.
 
-*Wiring, MA player provider, and the exact ALSA/PipeWire ceiling config: pending `research/05`.*
+So it is not a play control; it is the **calibrated hardware ceiling**, set once with an SPL meter
+and then left alone. Klipsch publishes a maximum of **103 dB @ 1 m**, which is why this matters.
+
+The child-reachable physical control is the **IR remote**. The manual publishes the full IR hex
+code table (e.g. `USB Source Select` = `0x02FD 48B7`), so an HA IR blaster can force the input back
+and wind the volume down — a recovery path, and an automation hook. The front LED encodes source
+(**white = USB**), which is a rule a four-year-old can learn.
+
+### 7.2 The laptop as a Music Assistant player
+
+MA's old `builtin_player` is gone; the browser web player is now a **Sendspin** client over a
+WebRTC DataChannel. It is fully targetable with volume 0–100 and gets lossless FLAC on a LAN
+desktop browser — but **whether it survives a page reload is unverified**, and the provider has
+explicit disconnect handling. That is a real risk for a kiosk that reloads on crash.
+
+**Use the Local Audio App (`sendspin-cli`) in Docker**, not the browser tab. It self-discovers over
+mDNS, outputs straight to ALSA, persists volume in `/data/state`, reopens a vanished ALSA device
+mid-stream, and exposes `SENDSPIN_HOOK_START` for re-asserting the mixer on every stream. Decisively:
+it lets the **kiosk browser user have no `/dev/snd` access at all**. Fallback: Squeezelite (the only
+`stable`-stage option, declares `GAPLESS_PLAYBACK`).
+
+Do **not** use `local_audio` (retired, tombstoned) or `snapcast` (marked `unmaintained`).
+
+### 7.3 The volume ceiling, in three layers
+
+1. **ALSA `softvol` with a `max_dB` ceiling** on the laptop, below anything the child can reach.
+   Gotcha: softvol itself needs control-device write access, so the player and the browser must run
+   as **different users** — which is also what keeps `/dev/snd` away from the kiosk.
+2. **A systemd timer re-asserts the mixer**, plus `SENDSPIN_HOOK_START` on every stream.
+3. **MA's per-player `max_volume`**, which is a **rescale, not a clamp** — logical 0→min, 100→max —
+   so the child sees a full-range control whose top is safe. `_enforce_volume_limits` additionally
+   corrects changes made externally.
+
+Recommendation: **do not run PipeWire at all** on a single-purpose old laptop. Also set
+`usbcore.autosuspend=-1`.
+
+### 7.4 Calibration
+
+**Enable MA volume normalisation first** (default −14 LUFS) or the calibration measures nothing
+repeatable. Then set the rear knob with an SPL meter at the pillow.
+
+There is **no published standard for loudspeakers in a child's bedroom.** EN 50332 and ITU-T H.870
+genuinely do not transfer — they are defined into an ear-simulator coupler that does not exist here.
+The working target is **75 dBA at the pillow**, derived from NIOSH 85 dBA/8 h with a 3 dB exchange
+rate. That number is derived, not quoted, and should be treated as such.
+
+### 7.5 Open, needs an empirical test
+
+The R-14PM's auto-on, auto-standby and input/volume memory behaviour across a power cycle is
+undocumented — and an appliance that wakes on the wrong input gives the child silence. Likewise the
+Sendspin web player's reload survival. `research/05` §6.5 lists six such items; each is a short test.
 
 ---
 
@@ -307,21 +352,24 @@ after 60 s.
 
 ## 12. Build order
 
-1. **Spike, before anything else:** Chromium on the actual laptop, drag a finger across a page of
-   images. Touch/fling quality under Linux Chromium is the least-documented part of the stack and
-   decides Wayland vs X11.
-2. MA client — connect, list albums, play one to `KID_ROOM`. Prove the whole path end to end.
-3. The crate: cover grid, page flip, tap to play. Hard-coded album list.
-4. Now playing: cover, transport, volume blocks, dim.
-5. SQLite + approved-set model; the crate reads from it.
-6. Album view: the number-line track list.
-7. Admin app + review queue.
-8. Curation worker: seed → suggestions → annotations → queue.
-9. MQTT discovery to HA.
-10. Kiosk image, lockdown, UniFi rules.
-11. Klipsch path, volume ceiling, SPL calibration.
+Development happens on macOS; the Linux laptop is a deployment target, not a dev machine.
 
-Ship 1–4 and put it in his room. Everything after that is improvement; those four are the product.
+1. MA client — connect, list albums, play one to `KID_ROOM`. Prove the whole path end to end.
+2. The crate: cover grid, page flip, tap to play. Hard-coded album list.
+3. Now playing: cover, transport, volume blocks, dim.
+4. SQLite + approved-set model; the crate reads from it.
+5. Album view: the number-line track list.
+6. Admin app + review queue.
+7. Curation worker: seed → suggestions → annotations → queue.
+8. MQTT discovery to HA.
+9. Kiosk image, lockdown, UniFi rules.
+10. Klipsch path, volume ceiling, SPL calibration.
+
+Ship 1–3 and put it in his room. Everything after that is improvement; those three are the product.
+
+**Before the kiosk image is final** (step 9), verify touch and fling quality in Chromium on the
+actual Linux laptop. It is the least-documented part of the stack and decides Wayland vs X11.
+It does not block development, but it must not be discovered late.
 
 ---
 
@@ -333,6 +381,6 @@ Ship 1–4 and put it in his room. Everything after that is improvement; those f
 | `research/02-prior-art-kiosk-ui.md` | Kids' players, cover-art UIs, Linux kiosk, child UX |
 | `research/03-discovery-and-filtering.md` | Similar-artist APIs, AI-slop and NSBM filtering, acquisition |
 | `research/04-pedagogy.md` | Numerals, literacy, and what not to teach |
-| `research/05-klipsch-local-audio.md` | Klipsch R-14PM, local audio, volume ceiling *(pending)* |
+| `research/05-klipsch-local-audio.md` | Klipsch R-14PM, local audio path, volume ceiling |
 
 All claims are cited to primary sources; items that could not be verified are marked UNVERIFIED.
