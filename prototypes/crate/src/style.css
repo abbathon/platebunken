@@ -144,11 +144,23 @@ html, body {
 @media (hover: hover) { .btn--play:hover::after { background: color-mix(in oklab, var(--glow) 86%, white); } }
 .btn[disabled] { opacity: 0.28; pointer-events: none; }
 
-/* Edge dead-zones: children press with the whole finger pad, often at an angle. */
-.stage { padding: 28px clamp(28px, 4vw, 56px); height: 100%; display: grid; gap: 22px; }
+/* Edge dead-zones: children press with the whole finger pad, often at an angle. The side
+   padding also reserves the two fixed rails, so no screen's content can ever run under them. */
+.stage {
+  padding: 28px clamp(28px, 4vw, 56px);
+  padding-left: 124px; padding-right: 124px;
+  height: 100%; display: grid; gap: 22px;
+}
 
 /* ── A · Vegg ─────────────────────────────────────────────────── */
-.wall { grid-template-rows: 1fr auto; position: relative; }
+.wall { grid-template-rows: 1fr; position: relative; align-content: center; }
+/* The arrows sit beside the covers, not pinned to the window, so they stay next to the crate
+   at any width instead of drifting into the margin or onto the sleeves. */
+.wall__row { display: flex; align-items: center; justify-content: center; gap: clamp(10px, 2.4vw, 44px); }
+.flip svg { width: 56px; height: 56px; }
+/* Gone rather than greyed at the ends of the crate: nothing that way, nothing to press. It is
+   the same silent stop the arrow keys make, said in the same place. */
+.flip[disabled] { opacity: 0; pointer-events: none; }
 /* Tile is bounded on BOTH axes: never wider than a third of the page, never taller
    than a third of what's left once the flip row and gutters are taken out. */
 .wall__grid {
@@ -156,7 +168,7 @@ html, body {
   display: grid; grid-template-columns: repeat(3, var(--tile));
   gap: clamp(12px, 1.6vw, 24px); align-content: center; justify-content: center;
 }
-.wall__foot { display: flex; justify-content: space-between; align-items: center; }
+
 
 /* ── the riffle ───────────────────────────────────────────────────
    A flipped page arrives rather than appears: nine sleeves sweep in from the side the hand
@@ -178,84 +190,25 @@ html, body {
   from { opacity: 0.32; translate: calc(var(--dir) * 58px) 0; }
   to   { opacity: 1; translate: none; }
 }
-/* ── crate depth ──────────────────────────────────────────────────
-   How much crate is behind you and how much is ahead, as thickness rather than as a count.
-
-   This replaced a row of one pip per page. Two pips was fine, but the crate is append-only and
-   fed by a curation worker, and reading twelve of them needs exactly the two things PRODUCT.md
-   measured him as unable to do: counting past a subitizing range of 2.8, and comparing ordinal
-   positions at 0.66 accuracy, barely above chance. §4.2 already bans pips beside the track
-   numerals for this reason; the crate had inherited none of it.
-
-   Sleeve edges seen side-on: a quantity you see rather than count, which is what the physical
-   object actually looks like. It goes to nothing at either end, which is also what makes the
-   silent stop at the ends of the crate legible instead of merely dead. */
-.depth {
-  position: absolute; top: 0; bottom: 124px; width: 22px;
-  pointer-events: none;
-}
-.depth--before { left: clamp(6px, 1vw, 18px); }
-.depth--after  { right: clamp(6px, 1vw, 18px); }
-/* Absolutely positioned, because a percentage height needs a definite containing block and a
-   centred grid row does not give it one — laid out that way the rails computed to 0x0. */
-.depth i {
-  position: absolute; left: 0; right: 0;
-  height: var(--fill);
-  top: calc(50% - var(--fill) / 2);
-  /* Sleeve edges: a lit rule every 7px, not a solid bar. Mixed off --ink, not --edge:
-     --edge is a hairline colour on a near-black background, and this has to read from across
-     a room, which is the whole job it inherited from the pips. */
-  background: repeating-linear-gradient(
-    to bottom,
-    color-mix(in oklab, var(--ink) 34%, transparent) 0 2px,
-    transparent 2px 7px);
-  transition: height 220ms cubic-bezier(0.16, 1, 0.3, 1), top 220ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* ── B · Bunken ───────────────────────────────────────────────── */
-.stack { place-items: center; grid-template-rows: 1fr auto; }
-.stack__deck { position: relative; width: min(46vh, 70vw); aspect-ratio: 1; margin-top: 12vh; }
-.stack__card {
-  position: absolute; inset: 0; transform-origin: 50% 100%;
-  transition: transform var(--flip), opacity var(--flip), filter var(--flip);
-}
-.stack__foot { display: flex; gap: clamp(20px, 4vw, 60px); align-items: center; }
-
-/* ── C · Hylla ────────────────────────────────────────────────── */
-.shelf { grid-template-rows: 1fr auto; align-content: center; }
-.shelf__rail {
-  display: flex; gap: clamp(18px, 3vw, 44px); align-items: center;
-  overflow-x: auto; overscroll-behavior-x: contain;
-  scroll-snap-type: x mandatory; scrollbar-width: none;
-  padding-inline: calc(50% - min(24vh, 36vw));
-}
-.shelf__rail::-webkit-scrollbar { display: none; }
-.shelf__slot { flex: 0 0 auto; width: min(48vh, 72vw); scroll-snap-align: center; transition: width var(--flip); }
-.shelf__slot[data-near="1"] { width: min(30vh, 44vw); }
-.shelf__slot[data-near="2"] { width: min(21vh, 30vw); }
-.shelf__slot .cover { filter: saturate(0.5) brightness(0.55); transition: filter var(--flip); }
-.shelf__slot[data-focus="1"] .cover { filter: none; }
-.shelf__foot { display: flex; justify-content: center; }
-
-/* ── now playing — §4.3 ──────────────────────────────────────────
-   Cover near-fullscreen, square, uncropped, nothing over it. The band name once, below the
-   art, never a control. Four verbs underneath and nothing else. This was a two-column split
-   with a scrolling track list beside the cover, which is a desktop music player: mostly text,
-   aimed at someone who cannot read. */
-.np { grid-template-rows: minmax(0, 1fr) auto auto; justify-items: center; gap: clamp(14px, 2.2vh, 28px); }
-.np__art { height: 100%; aspect-ratio: 1; max-width: 100%; display: grid; }
-.np__art .cover { height: 100%; width: auto; aspect-ratio: 1; margin-inline: auto; }
+/* ── now playing ─────────────────────────────────────────────────
+   Cover, band name, and the track list — visible, not behind a key. The list was briefly a
+   screen of its own reached with up or down, which was wrong twice over: a four-year-old has
+   no reason to guess that a key opens something, and the list is most of what the screen is
+   for. §4.3 asked for a near-fullscreen cover and no list; that was written before anyone
+   watched a child use it. */
+.np { grid-template-columns: minmax(0, 1fr) minmax(300px, 0.9fr); gap: clamp(24px, 3.4vw, 56px); align-items: center; }
+.np__art { width: 100%; max-width: min(66vh, 100%); justify-self: center; }
+.np__side { display: grid; gap: 18px; align-content: center; min-height: 0; }
 .np__artist {
-  font-size: clamp(28px, 4.4vw, 60px); font-weight: 800; letter-spacing: -0.03em;
-  line-height: 0.96; margin: 0; text-align: center; max-width: 92vw;
+  font-size: clamp(26px, 3.6vw, 52px); font-weight: 800; letter-spacing: -0.03em;
+  line-height: 0.96; margin: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 /* ── the album view — §4.2, the number line ─────────────────────
    One straight, evenly spaced column. Geometry carries the pedagogic effect, not the
    numerals. Never a wheel, arc, ring, carousel or grid. */
-.tracks-view { align-content: center; }
-.tracks { list-style: none; margin: 0 auto; padding: 0; width: min(760px, 100%); overflow-y: auto; max-height: 100%; scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
+.tracks { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 46vh; scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
 .track {
   display: grid; grid-template-columns: 78px 1fr; align-items: center;
   gap: 16px; min-height: 96px; width: 100%;
@@ -274,20 +227,43 @@ html, body {
 @media (hover: hover) { .track:hover:not([aria-current="true"]) { background: var(--bg-raised); border-radius: 6px; } }
 
 .transport { display: flex; gap: clamp(18px, 3vw, 40px); align-items: center; flex-wrap: wrap; justify-content: center; }
-.vol { display: flex; gap: 14px; align-items: center; }
-.vol__blocks { display: flex; gap: 7px; }
-.vol__b { width: 22px; height: 46px; border-radius: 3px; background: color-mix(in oklab, var(--bg-raised) 78%, var(--edge)); }
+
+/* Vertical, under the theme discs, on every screen. Louder is up — the one mapping he can
+   already be assumed to hold. */
+.vol { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-top: 22px; }
+.vol__blocks { display: flex; flex-direction: column-reverse; gap: 6px; }
+.vol__b { width: 46px; height: 13px; border-radius: 3px; background: color-mix(in oklab, var(--bg-raised) 78%, var(--edge)); }
 .vol__b[data-on="1"] { background: var(--glow); }
+
+/* ── the rails ────────────────────────────────────────────────────
+   Two fixed columns, present on every screen, in the same place always. Left is the device:
+   which theme, how loud. Right is which surface he is looking at. Both sit in the edge dead
+   zones of §4.5, which is where a control belongs when a stray palm press on it costs nothing
+   — and neither of these can destroy anything. */
+.rail {
+  position: fixed; top: 18px; bottom: 18px; z-index: 40;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px;
+}
+.rail--left  { left: 16px; justify-content: flex-start; }
+.rail--right { right: 16px; justify-content: flex-start; }
+
+/* ── the shelves ──────────────────────────────────────────────────
+   Four fixed slots. A shelf with nothing on it keeps its slot and goes inert rather than
+   disappearing: a rail that grew as shelves filled would move marks he has already learned,
+   and spatial position is the only index a pre-reader has. */
+.shelf-btn svg { width: 38px; height: 38px; }
+.shelf-btn[data-on="1"] { color: var(--on-glow); }
+.shelf-btn[data-on="1"]::after { background: var(--glow); }
+.shelf-btn[data-on="1"]::before { background: color-mix(in oklab, var(--glow) 70%, black); }
+.shelf-btn[data-empty="1"] { opacity: 0.22; pointer-events: none; }
 
 /* ── the theme picker ─────────────────────────────────────────────
    Three discs, top-left, in every crate variant, forever. No panel, no open state, nothing
    that waits for an answer — the device still never asks him a question, it just offers a
    switch. It sits in the edge dead zone of §4.5 because it is the one control here where a
    stray palm press costs nothing at all. */
-.picker {
-  position: fixed; left: 18px; top: 18px; z-index: 40;
-  display: flex; flex-direction: column; gap: 12px;
-}
+.picker { display: flex; flex-direction: column; gap: 12px; }
 .picker__dot {
   width: var(--target); height: var(--target);   /* 76px. The floor, not a target to shave. */
   border-radius: 999px; cursor: pointer;
@@ -324,21 +300,6 @@ html, body {
   pointer-events: none;
 }
 
-/* ── the volume readout ───────────────────────────────────────────
-   The crate used to take + and - and show nothing, because the blocks only existed on the now
-   playing view. A press that appears to do nothing is the disappointment principle 1 is about,
-   and volume is one of the four verbs, so he presses it here. Appears on change, lets itself
-   go. At the ceiling the blocks sit full and do not move, which says "that is all there is"
-   without a word. */
-.vol-flash {
-  position: fixed; top: 26px; left: 50%; transform: translateX(-50%);
-  z-index: 60; padding: 14px 18px; border-radius: 14px;
-  background: color-mix(in oklab, var(--bg-raised) 88%, transparent);
-  box-shadow: 0 10px 34px -12px rgb(0 0 0 / 0.85);
-  animation: vol-flash-in 140ms ease-out both;
-}
-@keyframes vol-flash-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translateX(-50%); } }
-
 /* ── the caption ──────────────────────────────────────────────────
    What is selected, in words, in the bottom gutter. Not for the child: he cannot read it and
    never needs to, because the frame already tells him what is selected and this only ever
@@ -364,7 +325,8 @@ html, body {
 
 /* ── prototype switcher — deliberately not part of the design ──── */
 .switch {
-  position: fixed; right: 16px; top: 16px; z-index: 100;
+  /* Clear of the shelf rail, which is the child's control and takes precedence. */
+  position: fixed; right: 108px; top: 16px; z-index: 100;
   display: flex; align-items: center; gap: 4px;
   background: #fff; color: #111; border-radius: 999px; padding: 4px;
   box-shadow: 0 2px 6px rgb(0 0 0 / 0.4), 0 12px 28px -8px rgb(0 0 0 / 0.7);
@@ -392,7 +354,6 @@ html, body {
   box-shadow: 0 6px 12px rgb(0 0 0 / 0.6), 0 30px 60px -16px rgb(0 0 0 / 0.95);
 }
 .wall__grid:has(.slot[data-focus="1"]) .slot:not([data-focus="1"]) .cover { opacity: 0.62; }
-.shelf__rail:has(.slot[data-focus="1"]) .slot:not([data-focus="1"]) .cover { opacity: 0.6; }
 
 /* ── the frame ────────────────────────────────────────────────────
    Themed chrome. It sits OUTSIDE the artwork, offset off the edge, and never over it:
@@ -473,10 +434,6 @@ html, body {
 .frame__c--tr { top: 0; right: 0; transform: scaleX(-1); }
 .frame__c--bl { bottom: 0; left: 0; transform: scaleY(-1); }
 .frame__c--br { bottom: 0; right: 0; transform: scale(-1); }
-
-/* The stack shows one sleeve at a time, so a frame there marks nothing and is just noise. */
-.stack .slot[data-focus="1"] { transform: none; }
-.stack .frame { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .slot,

@@ -1,49 +1,32 @@
 # PROTOTYPE — the crate
 
-**Throwaway.** Answers one question: *does browsing feel like flipping through records,
-and can a 4-year-old drive it with either a mouse or a finger?*
+It began as three crates on one route — A the wall, B the stack, C the shelf — to answer one
+question: *does browsing feel like flipping through records, and can a four-year-old drive it?*
 
-Three structurally different crates, switchable with `?variant=`:
+**Answered: A, the wall.** B and C are deleted rather than kept as options. A prototype that
+still carries the alternatives after the decision is one nobody trusts the decision of.
 
-| Key | Name | Primary affordance | Targets per screen |
-|---|---|---|---|
-| `A` | Vegg (the wall) | Tap any cover directly | 9 covers + 2 flips |
-| `B` | Bunken (the stack) | Flip one cover at a time, then play | 3 |
-| `C` | Hylla (the shelf) | Slide a strip, play the focused cover | 1 + slide |
+Run: `npm run prototype`.
 
-Run: `npm run prototype`. Arrow keys drive the crate; Shift + ←→ switches variant.
+## What is on screen
 
-## Themes
+- **The crate.** Nine covers, page flip, an arrow on each side pointing the way it takes you.
+  The arrows vanish at the ends rather than greying out.
+- **The left rail, on every screen.** Three theme discs, then volume — vertical, louder up.
+  One control, one place, always.
+- **The right rail, on every screen.** Four fixed slots: the crate, then the *new*, *recent* and
+  *most-played* shelves. A shelf with nothing on it keeps its slot and goes inert; a rail that
+  grew as shelves filled would move marks he had already learned.
+- **Now playing.** Cover, band name, and the track list beside it as a number line — always
+  visible, not behind a key. Skipping past the last track ends the record and returns to the
+  crate with that album selected.
+- **A line in the bottom gutter** naming the selected album's artist, title and year. Not for
+  the child; useful for whoever is next to him.
 
-`?theme=natt|vikingtid|romfart`, the three discs top-left, `*`, or the button in the top-right
-bar. The discs and `*` are the real control — they are in the child's crate. Each theme is an
-emblem, a backdrop and a plate shape as well as a palette — chrome only, never the artwork. They live in
-`src/theme/themes.ts`, which is pure data and outlives this prototype. See ARCHITECTURE.md §4.6
-for what a theme is not allowed to do.
-
-The selected sleeve's frame is themed: a static ring, a light running its perimeter, corner
-ornaments, and a settle that arrives from the direction the hand moved. Tracer speed is per
-theme and floored at 1800 ms; `prefers-reduced-motion` removes it and makes the ring solid.
-
-Flipping a page sweeps the nine new sleeves in from the side you moved towards. Holding the key
-down suppresses it — that is a scrub, not a flip.
-
-The backdrop moves: waves drift at three speeds with a ship riding them, stars twinkle out of
-phase. `prefers-reduced-motion` stops all of it, and the backdrop carries no information, so
-nothing is lost with it.
-
-A line in the bottom gutter names the selected album's artist, title and year. Not for the
-child — the frame is what tells him what is selected — but useful for whoever is next to him.
-
-Crate depth runs down both sides: sleeve edges showing how much is behind you and how much is
-ahead, as thickness rather than as a countable row of pips. The playing sleeve carries a solid
-bar beneath it. Volume shows a readout wherever you press it. Skipping past the last track ends
-the record and returns you to the crate with that album selected.
-
-Crate tiles load the 1024px render on HiDPI screens: the 512 is short of what a 2x display asks
-of a ~374px tile, and soft covers are the one thing this product cannot afford.
-
-Show the child all three themes in a minute and watch which one he reaches for.
+```
+← ↑ → ↓   move / flip     Enter  play        Space  play / pause
++ / −     volume          Esc    back to the crate      *  next theme
+```
 
 ## Data
 
@@ -52,18 +35,34 @@ npm run snapshot     # dump the real library to public/library.json
 npm run prototype
 ```
 
-The page loads `library.json` if it is there and falls back to the mock set if not, so it
-always runs. The bottom bar says which it is showing. The snapshot is **gitignored** — it
-is a dump of a private music library.
+The page loads `library.json` if it is there and falls back to the mock set if not, so it always
+runs. The bottom bar says which it is showing. `?all=1` shows the whole library rather than the
+curated set, for working on the grid. The snapshot is **gitignored** — it is a dump of a private
+music library.
 
-The prototype holds no token. `snapshot.ts` uses the Node client, and cover URLs point at
-MA's imageproxy, which serves unauthenticated — so real artwork renders with no credential
-in the page. Never use the raw `path` from `metadata.images[]`: it is the source provider's
-own URL, embeds that provider's API key, and may be unreachable from the kiosk.
+The prototype holds no token. `snapshot.ts` uses the Node client, and cover URLs point at MA's
+imageproxy, which serves unauthenticated — so real artwork renders with no credential in the
+page. Never use the raw `path` from `metadata.images[]`: it is the source provider's own URL,
+embeds that provider's API key, and may be unreachable from the kiosk.
 
-Albums with no artwork in MA fall back to a procedural cover rather than a broken tile, so
-the gaps in the library stay visible. That matters: in a cover-art interface, an untagged
-album is an invisible album.
+Crate tiles load the 1024px render on HiDPI screens: the 512 is short of what a 2x display asks
+of a ~374px tile, and soft covers are the one thing this product cannot afford.
 
-**Not production.** No error handling, no tests, no persistence. The font loads from
-Google Fonts, which the real kiosk cannot do — production must self-host.
+Albums with no artwork in MA fall back to a procedural cover rather than a broken tile, so the
+gaps in the library stay visible. In a cover-art interface an untagged album is an invisible one.
+
+## Themes
+
+`?theme=natt|vikingtid|romfart`, the three discs on the left rail, or `*`. Each theme is an
+emblem, a backdrop and a plate shape as well as a palette — chrome only, never the artwork. They
+live in `src/theme/themes.ts`, which is pure data and outlives this prototype. ARCHITECTURE.md
+§4.6 says what a theme is not allowed to do.
+
+The backdrop moves: waves drift at three speeds with a ship riding them, stars twinkle out of
+phase. `prefers-reduced-motion` stops all of it, and the backdrop carries no information, so
+nothing is lost with it.
+
+Show the child all three in a minute and watch which one he reaches for.
+
+**Not production.** No error handling, no tests, no persistence. The font loads from Google
+Fonts, which the real kiosk cannot do — production must self-host.

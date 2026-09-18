@@ -1,5 +1,9 @@
-// PROTOTYPE — three crates on one route, switchable with ?variant=A|B|C.
-// Question: does browsing feel like flipping records, and can a 4-year-old drive it?
+// PROTOTYPE — the crate.
+//
+// This began as three crates on one route: A the wall, B the stack, C the shelf. The question
+// was which one a four-year-old could actually drive. It is answered — **A, the wall** — so B
+// and C are gone rather than kept around as options. A prototype that still carries the
+// alternatives after the decision is a prototype nobody trusts the decision of.
 import { loadLibrary, seedCount, type Album } from "./library";
 import { coverSvg } from "./cover";
 import { THEMES, applyTheme, frameEl, setEntryDirection, themeFromUrl, themePicker, type Theme } from "./theme";
@@ -13,6 +17,11 @@ const ICON = {
   right: `<svg viewBox="0 0 24 24"><path d="m8.8 3.8 8.2 8.2-8.2 8.2-1.6-1.6L13.8 12 7.2 5.4z"/></svg>`,
   home:  `<svg viewBox="0 0 24 24"><path d="M4 9.5 12 3l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>`,
   minus: `<svg viewBox="0 0 24 24"><path d="M5 11h14v2H5z"/></svg>`,
+  // Shelf marks. Learned by position first and shape second, never by name.
+  crate: `<svg viewBox="0 0 24 24"><path d="M3 5h3v14H3zM8 5h3v14H8zM13 5h3v14h-3zM18.2 5.6l2.6.8-3.9 12.6-2.6-.8z"/></svg>`,
+  star:  `<svg viewBox="0 0 24 24"><path d="m12 2 2.6 6.3 6.8.5-5.2 4.4 1.6 6.6L12 16.3 6.2 19.8l1.6-6.6L2.6 8.8l6.8-.5z"/></svg>`,
+  again: `<svg viewBox="0 0 24 24"><path d="M12 4a8 8 0 1 0 7.5 10.6l-1.9-.7A6 6 0 1 1 12 6v3l4.5-4L12 1z"/></svg>`,
+  heart: `<svg viewBox="0 0 24 24"><path d="M12 21S3.5 15.4 3.5 9.6A4.6 4.6 0 0 1 12 7a4.6 4.6 0 0 1 8.5 2.6C20.5 15.4 12 21 12 21Z"/></svg>`,
   plus:  `<svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>`,
 };
 
@@ -21,17 +30,29 @@ const ICON = {
 // `now` is what is PLAYING. `view` is what is ON SCREEN. They were one thing, which meant the
 // crate had no way to know a record was running and could not mark the sleeve it came from —
 // and a four-year-old who walks away and comes back does not hold that in his head.
-type View = { name: "crate" } | { name: "playing" } | { name: "tracks" };
+type View = { name: "crate" } | { name: "playing" };
+type Shelf = "crate" | "new" | "recent" | "played";
+
 const state = {
   view: { name: "crate" } as View,
   now: null as { album: Album; track: number } | null,
+  /** Which surface is showing. Shelves are ADDITIONAL surfaces, never reorderings (§4.1). */
+  shelf: "crate" as Shelf,
+  /**
+   * A cursor per shelf. Leaving the crate to look at the new shelf and coming back must not
+   * cost him his place — position is the only index he has.
+   */
+  cursors: { crate: 0, new: 0, recent: 0, played: 0 } as Record<Shelf, number>,
+  /** Album ids, most recent first. Feeds the recent shelf. */
+  history: [] as string[],
+  /** Album id -> times played. Feeds the most-played shelf. */
+  counts: {} as Record<string, number>,
   page: 0,          // A
   cursor: 0,        // B and C, and the focused album in A
   focusTrack: 1,    // focused row in the number line
   playing: false,
   volume: 3,        // of 7 blocks
-  /** When volume last changed, so the crate can show a readout and then let it go. */
-  volumeAt: 0,
+
   // Direction of the last move, so the selection frame arrives from where the hand came.
   from: { x: 0, y: 0 },
   lastPage: 0,      // the page the crate was showing on the previous render
@@ -41,8 +62,6 @@ const state = {
 const PER_PAGE = 9;
 const COLS = 3;
 const VOL_STEPS = 7;
-/** How long the crate shows a volume readout after a change, ms. */
-const VOL_FLASH_MS = 1700;
 
 const lib = await loadLibrary();
 
@@ -89,9 +108,86 @@ function setTheme(t: Theme): void {
   render();
 }
 
+/**
+ * The shelves — §4.1.
+ *
+ * "Separate shelves — new, recent, most-played — are *additional surfaces*, never reorderings
+ * of the crate." That is the whole rule. The crate's own order is append-only and untouchable;
+ * a shelf is a different window onto the same albums, with its own order and its own cursor.
+ *
+ * Each shelf is capped at one page. A shelf you can get lost in is just a second crate, and
+ * the point of a shelf is that it is a short answer to a question — what is new, what did I
+ * just play, what do I play most.
+ *
+ * `new` is the tail of the crate reversed, which is exact rather than approximate: the crate
+ * is append-only, so the last albums added are the newest by construction. On the kiosk this
+ * reads `released_at` from the store, and the trickle decides what has arrived.
+ */
+const SHELF_SIZE = PER_PAGE;
+
+function shelfAlbums(shelf: Shelf): Album[] {
+  switch (shelf) {
+    case "crate":
+      return ALBUMS;
+    case "new":
+      return ALBUMS.slice(-SHELF_SIZE).reverse();
+    case "recent":
+      return state.history.slice(0, SHELF_SIZE)
+        .map((id) => ALBUMS.find((a) => a.id === id))
+        .filter((a): a is Album => !!a);
+    case "played":
+      return Object.entries(state.counts)
+        .sort((x, y) => y[1] - x[1])
+        .slice(0, SHELF_SIZE)
+        .map(([id]) => ALBUMS.find((a) => a.id === id))
+        .filter((a): a is Album => !!a);
+  }
+}
+
+/**
+ * The shelf rail: which surface he is looking at.
+ *
+ * Four fixed slots, right edge, every screen, forever. A shelf with nothing on it keeps its
+ * slot and goes inert rather than disappearing — a rail that grows as shelves fill would move
+ * the marks he has already learned, and spatial position is the only index a pre-reader has.
+ * A dim, visibly different slot is a worse control than a live one and a far better one than
+ * a rail that rearranges itself.
+ */
+const SHELVES: { id: Shelf; icon: string; label: string }[] = [
+  { id: "crate",  icon: ICON.crate, label: "Bunken" },
+  { id: "new",    icon: ICON.star,  label: "Nytt" },
+  { id: "recent", icon: ICON.again, label: "Nylig spilt" },
+  { id: "played", icon: ICON.heart, label: "Mest spilt" },
+];
+
+function shelfRail(): HTMLElement {
+  const rail = el(`<nav class="rail rail--right" aria-label="Hyller"></nav>`);
+  for (const sh of SHELVES) {
+    const empty = shelfAlbums(sh.id).length === 0;
+    const b = el(`<button class="btn shelf-btn" aria-label="${sh.label}" aria-pressed="${sh.id === state.shelf}">${sh.icon}</button>`);
+    if (sh.id === state.shelf) b.dataset.on = "1";
+    if (empty) { b.dataset.empty = "1"; b.toggleAttribute("disabled", true); }
+    else b.addEventListener("click", () => setShelf(sh.id));
+    rail.append(b);
+  }
+  return rail;
+}
+
+/** The albums the crate is currently showing. Everything downstream reads this, not ALBUMS. */
+const shown = (): Album[] => shelfAlbums(state.shelf);
+
+function setShelf(next: Shelf): void {
+  if (next === state.shelf) return;
+  state.cursors[state.shelf] = state.cursor;
+  state.shelf = next;
+  state.cursor = Math.min(state.cursors[next], Math.max(0, shelfAlbums(next).length - 1));
+  state.lastPage = Math.floor(state.cursor / PER_PAGE);
+  state.from = { x: 0, y: 0 };
+  state.view = { name: "crate" };
+  render();
+}
+
 const app = document.getElementById("app")!;
-const variant = (): "A" | "B" | "C" =>
-  (new URLSearchParams(location.search).get("variant") ?? "A").toUpperCase() as "A" | "B" | "C";
 
 const el = (html: string): HTMLElement => {
   const t = document.createElement("template");
@@ -179,6 +275,10 @@ function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 const play = (album: Album, track = 1) => {
+  // The recent and most-played shelves are built from this, and from nothing else. There is no
+  // separate tracking: what he played is what he played.
+  state.history = [album.id, ...state.history.filter((id) => id !== album.id)];
+  state.counts[album.id] = (state.counts[album.id] ?? 0) + 1;
   state.now = { album, track };
   state.focusTrack = track;
   state.playing = true;
@@ -206,7 +306,7 @@ function endOfRecord(): void {
   state.now = null;
   state.playing = false;
   if (done) {
-    const i = ALBUMS.findIndex((a) => a.id === done.id);
+    const i = shown().findIndex((a) => a.id === done.id);
     if (i >= 0) { state.cursor = i; state.from = { x: 0, y: 0 }; }
   }
   state.view = { name: "crate" };
@@ -215,7 +315,8 @@ function endOfRecord(): void {
 
 // ── A · Vegg — 9 covers, tap any one. Position is the index. ─────
 function wall(): HTMLElement {
-  const per = PER_PAGE, pages = Math.ceil(ALBUMS.length / per);
+  const list = shown();
+  const per = PER_PAGE, pages = Math.max(1, Math.ceil(list.length / per));
   // The page follows the focused album, so arrow keys flip pages without a separate concept.
   state.page = Math.floor(state.cursor / per);
 
@@ -236,11 +337,12 @@ function wall(): HTMLElement {
   if (flipped) state.lastFlipAt = at;
   state.lastPage = state.page;
 
-  const root = el(`<section class="stage wall"><div class="wall__grid"></div>
-    <div class="wall__foot"></div></section>`);
+  const root = el(`<section class="stage wall">
+    <div class="wall__row"><div class="wall__grid"></div></div>
+  </section>`);
   const grid = root.querySelector(".wall__grid") as HTMLElement;
   if (flipped && !scrubbing) grid.dataset.flip = dir > 0 ? "right" : "left";
-  ALBUMS.slice(state.page * per, state.page * per + per).forEach((a, i) => {
+  list.slice(state.page * per, state.page * per + per).forEach((a, i) => {
     const cell = coverEl(a, play);
     // Column order, counted from the edge the page is coming in from.
     const col = i % COLS;
@@ -250,111 +352,74 @@ function wall(): HTMLElement {
   });
 
   /**
-   * How much crate is behind you and how much is ahead, as thickness rather than as a count.
+   * The flip arrows, beside the crate and pointing the way they take you.
    *
-   * This replaced a row of one pip per page. Two pips was fine; the crate is append-only and
-   * fed by a curation worker, so at a hundred albums it is a row of twelve dots — and reading
-   * that needs exactly the two things PRODUCT.md measured him as unable to do: counting past a
-   * subitizing range of 2.8, and comparing ordinal positions at 0.66 accuracy. §4.2 already
-   * bans pips beside the track numerals for this reason; the crate had inherited none of it.
+   * They replaced two things at once: a pair of buttons parked in the bottom corners, and the
+   * crate-depth rails that stood where these do now. The rails were honest — thickness you see
+   * rather than count — but honest is not the bar. He is four, and an arrow on the left edge
+   * pointing left is the most direct statement this interface can make. A stack of sleeve
+   * edges asks him to work out what it means. It only ever meant "there is more that way".
    *
-   * A stack of sleeve edges seen side-on is the same information as a quantity you can see
-   * rather than count, it is what the physical object actually looks like, and it goes to
-   * nothing at either end — which is also what makes the silent stop legible instead of dead.
+   * They still go to nothing at the ends of the crate, which is what keeps the silent stop
+   * legible rather than merely dead — that part of the rails was worth keeping.
+   *
+   * Laid out beside the grid rather than pinned to the window, so they sit next to the covers
+   * at any width instead of drifting out into the margin or onto them.
    */
-  const total = ALBUMS.length;
-  const behind = state.page * per;
-  const ahead = Math.max(0, total - (state.page + 1) * per);
-  const depth = (side: "before" | "after", n: number) =>
-    el(`<div class="depth depth--${side}" aria-hidden="true"><i style="--fill:${((n / total) * 100).toFixed(1)}%"></i></div>`);
-  root.prepend(depth("before", behind));
-  root.append(depth("after", ahead));
-
-  const foot = root.querySelector(".wall__foot")!;
-  const prev = el(`<button class="btn btn--lg" aria-label="Forrige side">${ICON.left}</button>`);
-  const next = el(`<button class="btn btn--lg" aria-label="Neste side">${ICON.right}</button>`);
+  const row = root.querySelector(".wall__row")!;
+  const prev = el(`<button class="btn btn--lg flip" aria-label="Forrige side">${ICON.left}</button>`);
+  const next = el(`<button class="btn btn--lg flip" aria-label="Neste side">${ICON.right}</button>`);
   prev.toggleAttribute("disabled", state.page === 0);
   next.toggleAttribute("disabled", state.page >= pages - 1);
   prev.addEventListener("click", () => { moveCursor(-per); });
   next.addEventListener("click", () => { moveCursor(per); });
-  foot.append(prev, next);
+  row.prepend(prev);
+  row.append(next);
   return root;
 }
 
-// ── B · Bunken — one cover forward, the rest fanned behind. ──────
-function stack(): HTMLElement {
-  const root = el(`<section class="stage stack"><div class="stack__deck"></div>
-    <div class="stack__foot"></div></section>`);
-  const deck = root.querySelector(".stack__deck")!;
-  for (let d = 3; d >= 0; d--) {
-    const a = ALBUMS[(state.cursor + d) % ALBUMS.length];
-    const card = el(`<div class="stack__card"></div>`);
-    // Peek above, like sleeves leaning back in a crate. The fan IS the metaphor.
-    card.style.transform = `translateY(${-d * 58}px) scale(${1 - d * 0.045})`;
-    card.style.filter = d ? `brightness(${1 - d * 0.14}) saturate(${1 - d * 0.12})` : "none";
-    card.style.zIndex = String(10 - d);
-    card.style.pointerEvents = d ? "none" : "auto";
-    const cell = coverEl(a, play);
-    if (d === 0) focusSlot(cell);
-    card.append(cell);
-    deck.append(card);
-  }
-  const foot = root.querySelector(".stack__foot")!;
-  const back = el(`<button class="btn btn--lg" aria-label="Forrige plate">${ICON.left}</button>`);
-  const fwd  = el(`<button class="btn btn--lg" aria-label="Neste plate">${ICON.right}</button>`);
-  const go   = el(`<button class="btn btn--lg btn--play" aria-label="Spill">${ICON.play}</button>`);
-  back.addEventListener("click", () => { state.cursor = (state.cursor - 1 + ALBUMS.length) % ALBUMS.length; render(); });
-  fwd.addEventListener("click",  () => { state.cursor = (state.cursor + 1) % ALBUMS.length; render(); });
-  go.addEventListener("click",   () => play(ALBUMS[state.cursor % ALBUMS.length]));
-  foot.append(back, go, fwd);
-  return root;
-}
-
-// ── C · Hylla — a sliding strip; the centred cover is the live one. ──
-function shelf(): HTMLElement {
-  const root = el(`<section class="stage shelf"><div class="shelf__rail"></div>
-    <div class="shelf__foot"></div></section>`);
-  const rail = root.querySelector(".shelf__rail") as HTMLElement;
-  ALBUMS.forEach((a, i) => {
-    const near = Math.min(2, Math.abs(i - state.cursor));
-    const slot = el(`<div class="shelf__slot" data-near="${near}" data-focus="${i === state.cursor ? 1 : 0}"></div>`);
-    const cell = coverEl(a, (al) => (i === state.cursor ? play(al) : (state.cursor = i, render())));
-    if (i === state.cursor) focusSlot(cell);
-    slot.append(cell);
-    rail.append(slot);
-  });
-  queueMicrotask(() => {
-    const t = rail.children[state.cursor] as HTMLElement;
-    rail.scrollTo({ left: t.offsetLeft - (rail.clientWidth - t.clientWidth) / 2, behavior: "instant" as ScrollBehavior });
-  });
-  const go = el(`<button class="btn btn--lg btn--play" aria-label="Spill">${ICON.play}</button>`);
-  go.addEventListener("click", () => play(ALBUMS[state.cursor]));
-  root.querySelector(".shelf__foot")!.append(go);
-  return root;
-}
-
-// ── now playing — §4.3 ───────────────────────────────────────────
+// ── now playing ─────────────────────────────────────────────────
 //
-// Cover near-fullscreen, uncropped, nothing over it. The band name once, below the art,
-// never a control. Four verbs underneath and nothing else.
+// Cover, band name, and the track list — visible, not behind a key. It was moved to a screen
+// of its own and reached with up or down, which was wrong twice over: a four-year-old has no
+// reason to guess that a key opens something, and the list is most of what the screen is FOR.
+// If it is worth having it is worth showing.
 //
-// This used to be a two-column split with a scrolling track list beside the cover, which is a
-// desktop music player: roughly sixty percent text, aimed at someone who cannot read. The
-// track list is a screen of its own now (§4.2), reached deliberately with up or down.
+// §4.3 asked for a near-fullscreen cover and no list. That was written before anyone watched a
+// child use it. The list stays; the cover gives up some size for it.
 function nowPlaying(album: Album, track: number): HTMLElement {
   const root = el(`<section class="stage np">
     <div class="np__art"><div class="cover" id="np-art" style="cursor:default">${art(album, "lg")}</div></div>
-    <h1 class="np__artist">${esc(album.artist.toUpperCase())}</h1>
-    <div class="transport"></div>
+    <div class="np__side">
+      <h1 class="np__artist">${esc(album.artist.toUpperCase())}</h1>
+      <ol class="tracks"></ol>
+      <div class="transport"></div>
+    </div>
   </section>`);
   withImageFallback(root.querySelector("#np-art") as HTMLElement, album);
+
+  // The number line — §4.2. One straight, evenly spaced column. The geometry carries the
+  // measured effect, not the numerals, so this is never a wheel, arc, ring, carousel or grid.
+  // True track numbers, 1..n, no truncation and no renumbering: accuracy is what makes it
+  // learnable. No pips beside the numerals — subitizing range at 42-57 months is 2.8, and the
+  // row's position in the column already is the magnitude cue.
+  const list = root.querySelector(".tracks")!;
+  if (album.tracks.length === 0) {
+    list.append(el(`<li class="tracks__none">Music Assistant returned no tracks for this album.</li>`));
+  }
+  for (const t of album.tracks) {
+    const row = el(`<li><button class="track" aria-current="${t.n === track}" data-focus="${t.n === state.focusTrack ? 1 : 0}">
+      <span class="track__n">${t.n}</span><span class="track__t">${esc(t.title)}</span></button></li>`);
+    row.querySelector("button")!.addEventListener("click", () => play(album, t.n));
+    list.append(row);
+  }
 
   const tp = root.querySelector(".transport")!;
   const pp = el(`<button class="btn btn--lg btn--play" aria-label="${state.playing ? "Pause" : "Spill"}">${state.playing ? ICON.pause : ICON.play}</button>`);
   pp.addEventListener("click", () => { state.playing = !state.playing; render(); });
   const skip = el(`<button class="btn btn--lg" aria-label="Neste spor">${ICON.next}</button>`);
   skip.addEventListener("click", () => skipTrack(album, track));
-  tp.append(pp, skip, volume());
+  tp.append(pp, skip);
   return root;
 }
 
@@ -366,14 +431,24 @@ function skipTrack(album: Album, track: number): void {
   render();
 }
 
-/** The volume control: two large buttons and a row of filled blocks. */
+/**
+ * Volume, in one place, on every screen.
+ *
+ * It used to live in the now-playing transport, so the crate took the keys and showed nothing;
+ * a later fix flashed a readout that appeared and vanished. Both were wrong for the same
+ * reason: a four-year-old learns a control by where it is, and a control that moves with the
+ * screen — or is nowhere until you touch it — is several controls, not one.
+ *
+ * Vertical, on the left rail under the theme discs. Louder is up: the only mapping he can
+ * already be assumed to hold, and it costs nothing to honour.
+ */
 function volume(): HTMLElement {
-  const vol = el(`<div class="vol"></div>`);
-  const down = el(`<button class="btn" aria-label="Lavere">${ICON.minus}</button>`);
+  const vol = el(`<div class="vol" role="group" aria-label="Lyd"></div>`);
   const up   = el(`<button class="btn" aria-label="Høyere">${ICON.plus}</button>`);
-  down.addEventListener("click", () => setVolume(-1));
+  const down = el(`<button class="btn" aria-label="Lavere">${ICON.minus}</button>`);
   up.addEventListener("click", () => setVolume(1));
-  vol.append(down, volumeBlocks(), up);
+  down.addEventListener("click", () => setVolume(-1));
+  vol.append(up, volumeBlocks(), down);
   return vol;
 }
 
@@ -381,61 +456,22 @@ const volumeBlocks = (): HTMLElement =>
   el(`<div class="vol__blocks">${Array.from({ length: VOL_STEPS },
     (_, i) => `<span class="vol__b" data-on="${i < state.volume ? 1 : 0}"></span>`).join("")}</div>`);
 
-// ── the album view — §4.2, the number line ───────────────────────
-//
-// One straight, evenly spaced vertical column. The geometry is what carries the measured
-// effect, not the numerals, so this is never a wheel, arc, ring, carousel or grid. True track
-// numbers, 1..n, no truncation and no renumbering: accuracy is what makes it learnable. No
-// pips beside the numerals — mean subitizing range at 42-57 months is 2.8, and the row's
-// position in the column already is the magnitude cue.
-function trackList(album: Album, playingTrack: number | null): HTMLElement {
-  const root = el(`<section class="stage tracks-view"><ol class="tracks"></ol></section>`);
-  const list = root.querySelector(".tracks")!;
-  if (album.tracks.length === 0) {
-    list.append(el(`<li class="tracks__none">Music Assistant returned no tracks for this album.</li>`));
-    return root;
-  }
-  for (const t of album.tracks) {
-    const row = el(`<li><button class="track" aria-current="${t.n === playingTrack}" data-focus="${t.n === state.focusTrack ? 1 : 0}">
-      <span class="track__n">${t.n}</span><span class="track__t">${esc(t.title)}</span></button></li>`);
-    row.querySelector("button")!.addEventListener("click", () => play(album, t.n));
-    list.append(row);
-  }
-  return root;
-}
-
-// ── switcher: obviously not part of the design being judged ──────
-const NAMES = { A: "Vegg · the wall", B: "Bunken · the stack", C: "Hylla · the shelf" };
-
+// ── prototype readout: obviously not part of the design being judged ──
 /** Step to the next theme. Backs both the picker's keyboard route and the prototype bar. */
 function hopTheme(d: number): void {
   const i = (THEMES.findIndex((t) => t.id === THEME.id) + d + THEMES.length) % THEMES.length;
   setTheme(THEMES[i]!);
 }
 
-function hopVariant(d: number): void {
-  const keys = ["A", "B", "C"] as const;
-  const i = (keys.indexOf(variant()) + d + keys.length) % keys.length;
-  const u = new URL(location.href);
-  u.searchParams.set("variant", keys[i]);
-  history.replaceState(null, "", u);
-  state.view = { name: "crate" };
-  render();
-}
 function switcher(): HTMLElement {
-  const keys = ["A", "B", "C"] as const;
-  const cur = variant();
   const src = lib.source !== "live"
     ? "mock data"
     : showAll
       ? `${ALBUMS.length} albums · WHOLE LIBRARY, not curated`
       : `${ALBUMS.length} curated`;
-  const bar = el(`<div class="switch"><button aria-label="Previous variant">←</button>
-    <span>${cur} (${NAMES[cur]}) · ${src}</span><button aria-label="Next variant">→</button>
+  const bar = el(`<div class="switch"><span>${src}</span>
     <button class="switch__theme" aria-label="Next theme">${THEME.label}</button></div>`);
-  bar.children[0].addEventListener("click", () => hopVariant(-1));
-  bar.children[2].addEventListener("click", () => hopVariant(1));
-  bar.children[3].addEventListener("click", () => hopTheme(1));
+  bar.children[1].addEventListener("click", () => hopTheme(1));
   return bar;
 }
 
@@ -447,10 +483,9 @@ function switcher(): HTMLElement {
 //
 //   ← ↑ → ↓   move            Enter / Space  play        Esc  back to the crate
 //   + / -     volume          *              next theme (his key; picker discs do the same)
-//                             Shift + ← →    switch prototype variant
 
 function clampCursor(n: number): number {
-  return Math.max(0, Math.min(ALBUMS.length - 1, n));
+  return Math.max(0, Math.min(shown().length - 1, n));
 }
 
 function moveCursor(delta: number): void {
@@ -476,7 +511,7 @@ function moveGrid(dx: number, dy: number): void {
   const slot = state.cursor % PER_PAGE;
   const row = Math.floor(slot / COLS);
   const col = slot % COLS;
-  const lastPage = Math.max(0, Math.ceil(ALBUMS.length / PER_PAGE) - 1);
+  const lastPage = Math.max(0, Math.ceil(shown().length / PER_PAGE) - 1);
 
   if (dy !== 0) {
     const nextRow = row + dy;
@@ -490,7 +525,7 @@ function moveGrid(dx: number, dy: number): void {
   const nextCol = col + dx;
   if (nextCol >= 0 && nextCol < COLS) {
     const target = page * PER_PAGE + row * COLS + nextCol;
-    if (target >= ALBUMS.length) return;                    // past the end of the last page
+    if (target >= shown().length) return;                   // past the end of the last page
     state.from = { x: dx, y: 0 };
     state.cursor = target;
     render();
@@ -519,23 +554,14 @@ function moveGrid(dx: number, dy: number): void {
  */
 function setVolume(delta: number): void {
   state.volume = Math.max(0, Math.min(VOL_STEPS, state.volume + delta));
-  state.volumeAt = performance.now();
   render();
-  clearTimeout(volumeTimer);
-  volumeTimer = setTimeout(render, VOL_FLASH_MS + 40);
 }
-let volumeTimer: ReturnType<typeof setTimeout>;
 
 function onKey(e: KeyboardEvent): void {
   const tag = (e.target as HTMLElement)?.tagName ?? "";
   if (/^(INPUT|TEXTAREA)$/.test(tag)) return;
 
-  // Variant and theme switching are prototype chrome, so they get out of the child's way.
-  if (e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
-    e.preventDefault();
-    hopVariant(e.key === "ArrowLeft" ? -1 : 1);
-    return;
-  }
+  // Theme switching from the keyboard is prototype chrome; the discs are the real control.
   if (e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
     e.preventDefault();
     hopTheme(e.key === "ArrowUp" ? -1 : 1);
@@ -551,42 +577,38 @@ function onKey(e: KeyboardEvent): void {
     return;
   }
 
-  const v = variant();
   const where = state.view.name;
   const now = state.now;
 
   switch (e.key) {
     case "ArrowLeft":
       e.preventDefault();
-      if (where === "crate") { v === "A" ? moveGrid(-1, 0) : moveCursor(-1); }
+      if (where === "crate") moveGrid(-1, 0);
       else setVolume(-1);                       // left and right are volume once a record is on
       return;
     case "ArrowRight":
       e.preventDefault();
-      if (where === "crate") { v === "A" ? moveGrid(1, 0) : moveCursor(1); }
+      if (where === "crate") moveGrid(1, 0);
       else setVolume(1);
       return;
     case "ArrowUp":
     case "ArrowDown": {
       e.preventDefault();
       const d = e.key === "ArrowDown" ? 1 : -1;
-      if (where === "crate") { v === "A" ? moveGrid(0, d) : moveCursor(d); return; }
-      // Up and down walk the number line. From now playing they open it: §4 treats the track
-      // line as part of that view, reached by the same keys that then move within it.
-      if (where === "playing" && now) { state.view = { name: "tracks" }; render(); return; }
+      if (where === "crate") { moveGrid(0, d); return; }
+      // The list is already on screen, so these just walk it. Nothing to open.
       moveTrack(d);
       return;
     }
     case "Enter":
       e.preventDefault();
-      if (where === "crate") play(ALBUMS[state.cursor]);
-      else if (where === "tracks" && now) play(now.album, state.focusTrack);
-      else if (now) { state.playing = true; render(); }
+      if (where === "crate") play(shown()[state.cursor]);
+      else if (now) play(now.album, state.focusTrack);
       return;
     case " ":
       // Space is play/pause everywhere, the way every media player has worked forever.
       e.preventDefault();
-      if (where === "crate") play(ALBUMS[state.cursor]);
+      if (where === "crate") play(shown()[state.cursor]);
       else { state.playing = !state.playing; render(); }
       return;
     case "Escape":
@@ -622,30 +644,28 @@ function render() {
 
   if (state.view.name === "playing" && now) {
     app.append(nowPlaying(now.album, now.track));
-  } else if (state.view.name === "tracks" && now) {
-    app.append(trackList(now.album, state.playing ? now.track : null));
   } else {
-    app.append({ A: wall, B: stack, C: shelf }[variant()]());
-    // In the crate only. Now playing has the home target in the same corner, and a screen that
-    // is about to go dark is not a place to offer choices.
-    app.append(themePicker(THEME, setTheme));
+    app.append(wall());
     // Now playing prints the artist large already; repeating it small underneath it would
     // just be the screen talking to itself.
-    app.append(caption(ALBUMS[state.cursor]));
+    app.append(caption(shown()[state.cursor]));
   }
+
+  /**
+   * The two rails. They are on EVERY screen, in the same place, always.
+   *
+   * Left is the device: which theme, how loud. Right is which surface he is looking at. Both
+   * live in the edge dead zones of §4.5, which is where controls belong when a stray palm
+   * press on them costs nothing — and neither of these can destroy anything.
+   */
+  const left = el(`<div class="rail rail--left"></div>`);
+  left.append(themePicker(THEME, setTheme), volume());
+  app.append(left, shelfRail());
 
   if (state.view.name !== "crate") {
     const home = el(`<button class="btn home" aria-label="Tilbake til bunken">${ICON.home}</button>`);
     home.addEventListener("click", goHome);
     app.append(home);
-  }
-
-  // The volume readout, wherever he is. On now playing the blocks are permanent; in the crate
-  // and the number line they appear on change and let themselves go.
-  if (state.view.name !== "playing" && performance.now() - state.volumeAt < VOL_FLASH_MS) {
-    const flash = el(`<div class="vol-flash" aria-hidden="true"></div>`);
-    flash.append(volumeBlocks());
-    app.append(flash);
   }
 
   app.append(switcher());

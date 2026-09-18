@@ -121,11 +121,12 @@ stops silently at the ends of the crate: no error, nothing happens.
 On the now-playing view ←→ are volume, and ↑↓ open the **number line** (§4.2) and then walk
 it; Enter plays the focused track. **Space is play/pause everywhere.**
 
-**Volume is answered from every screen.** Now playing shows the blocks permanently; the crate
-and the number line show them on change and then let them go. A key that changes state and
-moves nothing on screen is a key he learns is broken. At the ceiling the blocks sit full and
-do not move, which says *that is all there is* without a word — silence there would be
-indistinguishable from a dead key.
+**Volume lives in one place, on every screen** — vertical, on the left rail under the theme
+discs, louder up. It was first in the now-playing transport, so the crate took the keys and
+showed nothing; then it flashed a readout that appeared and vanished. Both were wrong the same
+way: a four-year-old learns a control by where it is, and a control that moves with the screen,
+or is nowhere until you touch it, is several controls rather than one. At the ceiling the
+blocks sit full and do not move, which says *that is all there is* without a word.
 
 **Volume keys are accepted from several sources** — `+`/`−`, `NumpadAdd`/`NumpadSubtract`,
 the media keys, and PageUp/PageDown — so the final controller does not dictate the code.
@@ -156,14 +157,21 @@ Four verbs, plus two toggles. Nothing else exists.
   half-faded while he moves.
 - **Append-only order.** New albums are appended, never inserted. Position `2-3` is the same album
   forever.
-- **How much crate is behind and ahead, as thickness rather than as a count.** Sleeve edges
-  seen side-on, down each side of the page, growing and shrinking as he flips. This replaced a
-  row of one pip per page: two pips was fine, but the crate is append-only and fed by a
-  curation worker, and reading twelve of them needs exactly the two things PRODUCT.md measured
-  him as unable to do — counting past a subitizing range of 2.8, and comparing ordinal
-  positions at 0.66 accuracy, barely above chance. §4.2 already banned pips beside the track
-  numerals for this reason; the crate had inherited none of it. The rails go to nothing at
-  either end, which is also what makes the silent stop legible rather than merely dead.
+- **An arrow on each side of the covers, pointing the way it takes you.** This replaced two
+  things: a row of one pip per page, and then a pair of crate-depth rails that stood where the
+  arrows stand now.
+
+  The pips had to go because the crate is append-only and fed by a curation worker — twelve of
+  them needs exactly the two things PRODUCT.md measured him as unable to do, counting past a
+  subitizing range of 2.8 and comparing ordinal positions at 0.66 accuracy. The depth rails
+  that replaced them were honest, a quantity seen rather than counted, but honest is not the
+  bar: they still asked him to work out what they meant, and all they ever meant was *there is
+  more that way*. An arrow says it outright.
+
+  The arrows **vanish** at the ends of the crate rather than greying out — nothing that way,
+  nothing to press, the same silent stop the arrow keys make, said in the same place. They are
+  laid out beside the grid rather than pinned to the window, so they stay next to the covers at
+  any width instead of drifting into the margin or onto them.
 - **The sleeve a record is currently coming from is marked** with a solid bar beneath it —
   never a ring, so it cannot be confused with the selection frame, and never over the artwork.
   He plays something, wanders off and comes back; he is four and will not be holding which one
@@ -175,7 +183,19 @@ Four verbs, plus two toggles. Nothing else exists.
   standing next to him. It keeps its height when it has nothing to say, so the crate above it
   never shifts, and it sits centred and clear of the page-flip buttons at either edge.
 - Separate shelves — **new**, **recent**, **most-played** — are *additional surfaces*, never
-  reorderings of the crate.
+  reorderings of the crate. **Built**, as four fixed slots on a right-hand rail: the crate
+  itself, then the three shelves. Each shelf is capped at one page and keeps its own cursor, so
+  leaving the crate to look at what is new and coming back does not cost him his place.
+
+  `recent` and `most-played` are built from what he played and from nothing else — there is no
+  separate tracking. `new` is the tail of the crate reversed, which is exact rather than
+  approximate: the crate is append-only, so the last albums added are the newest by
+  construction, and the trickle decides what has arrived.
+
+  **A shelf with nothing on it keeps its slot and goes inert** rather than disappearing. A rail
+  that grew as shelves filled would move marks he had already learned, and spatial position is
+  the only index a pre-reader has. A dim, visibly different slot is a worse control than a live
+  one and a far better one than a rail that rearranges itself.
 - A **new** album appears on the new shelf, released on a trickle (a steady drip even if a dozen
   were approved at once) so there is nearly always a reason to walk over and look.
 
@@ -200,9 +220,10 @@ The track list, rendered as a number line — the best-evidenced pedagogic featu
 
 - Cover near-fullscreen, square, uncropped, no text overlaid.
 - Band name **once**, large, centred, plain capitals — below the art, never a control.
-- **The track list is not here.** It is a screen of its own (§4.2), reached deliberately with
-  ↑↓. Putting it beside the cover produces a desktop music player: a screen that is mostly
-  text, aimed at someone who cannot read.
+- **The track list is here and always visible**, beside the cover. It was briefly a screen of
+  its own opened with ↑↓, which was wrong twice over: a four-year-old has no reason to guess
+  that a key opens something, and the list is most of what this screen is for. The cover gives
+  up some size for it. ↑↓ walk the list; there is nothing to open.
 - **Skipping past the last track is the end of the record, not a dead press.** The screen goes
   back to the crate with the finished album still selected. Principle 3 says silence is a
   feature — a record stops, and that is what sends him back to the crate — and that only works
@@ -603,8 +624,11 @@ after 60 s.
 Development happens on macOS; the Linux laptop is a deployment target, not a dev machine.
 
 1. MA client — connect, list albums, play one to `KID_ROOM`. Prove the whole path end to end.
-2. The crate: cover grid, page flip, tap to play. Hard-coded album list.
-3. Now playing: cover, transport, volume blocks, dim.
+2. The crate: cover grid, page flip, tap to play. **Done** — wiring it to the store (4) is
+   what remains. **The crate is the wall**: three variants were prototyped and the parent chose
+   A, so B (the stack) and C (the shelf) are deleted rather than kept as options. A prototype
+   that still carries the alternatives after the decision is one nobody trusts the decision of.
+3. Now playing: cover, transport, volume blocks, dim. **Done.**
 4. SQLite + approved-set model; the crate reads from it. **Done** (`src/store/`, §5.1) — the
    store and the gate exist and are tested; wiring the prototype crate to it is part of step 2.
 5. Album view: the number-line track list. **Done** — §4.2, reached with ↑↓ from now playing.
