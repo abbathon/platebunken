@@ -108,14 +108,22 @@ target at ages 4–6 is about **57%**, while a keypress cannot miss. Four arrows
 grid without reading, and Enter is unambiguous.
 
 ```
-← ↑ → ↓   move            Enter   play
+← ↑ → ↓   move / flip     Enter   play        Space   play / pause
 + / −     volume          Esc     back to the crate
 ```
 
-In the crate, arrows move the selection and the page follows it — there is no separate
-"page" concept to understand. On the now-playing view, ↑↓ walk the track number line, ←→
-are volume, and Enter plays the focused track. Movement stops silently at the ends: no
-error, nothing happens.
+In the crate, **← and → never wrap onto the next row.** They walk the row, and crossing the
+edge of the 3×3 **flips the page** — which is the riffling motion the whole thing is
+imitating. The flip keeps the same row and lands on the opposite column, so the hand's
+sense of position survives it. ↑↓ move within the page and stop at its edges. Movement
+stops silently at the ends of the crate: no error, nothing happens.
+
+On the now-playing view, ↑↓ walk the track number line, ←→ are volume, Enter plays the
+focused track, and **Space is play/pause everywhere**.
+
+**Volume keys are accepted from several sources** — `+`/`−`, `NumpadAdd`/`NumpadSubtract`,
+the media keys, and PageUp/PageDown — so the final controller does not dictate the code.
+On a Norwegian layout `+` and `−` are both unshifted single keys.
 
 The selected sleeve is unmistakable — it lifts, takes an accent ring, and the rest of the
 crate dims. Subtle focus styling is for people who already know what focus is.
@@ -325,9 +333,11 @@ Debian minimal → greetd `[initial_session]` → **cage** → Chromium `--kiosk
   lock; browser flags are cosmetic. But arrows and Enter are now the primary input, so the
   keyboard cannot simply be disabled. A laptop keyboard is also ~80 keys of which 6 matter,
   and several of the rest are escape hatches (Ctrl+Alt+F1, Alt+Tab, Super).
-  - **Preferred: a dedicated USB keypad** — arrows, Enter, volume, and nothing else. The
-    laptop keyboard stays disabled at the udev level, the lock is unchanged, and the child
-    gets a physical object with six keys instead of a computer keyboard.
+  - **Preferred: a USB numeric keypad, ~€15.** With NumLock off it emits exactly what this
+    app needs and nothing else: `8 4 6 2` are the arrow keys, `Enter` is a double-height
+    key, and `+`/`−` are oversized in their own column. No letters, no Ctrl/Alt/Super, no
+    function keys, **no route to a TTY**. The laptop keyboard stays disabled at the udev
+    level and the lock is unchanged.
   - **Fallback: remap at evdev level** so the built-in keyboard emits only those keycodes.
     Weaker, since it is software standing between a four-year-old and a TTY.
 - The trackpad rule is unaffected and still applies.

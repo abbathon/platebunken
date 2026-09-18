@@ -275,6 +275,48 @@ function moveCursor(delta: number): void {
   render();
 }
 
+/**
+ * Grid movement for the 3x3 wall.
+ *
+ * Left and right FLIP THE PAGE rather than wrapping onto the next row — that is the
+ * riffling motion the crate is imitating, and it means a whole new set of nine sleeves
+ * appears with one key. Up and down move within the page and stop at its edges.
+ *
+ * Flipping keeps the cursor in the same row and puts it on the opposite column, so the
+ * hand's sense of position survives the flip.
+ */
+function moveGrid(dx: number, dy: number): void {
+  const page = Math.floor(state.cursor / PER_PAGE);
+  const slot = state.cursor % PER_PAGE;
+  const row = Math.floor(slot / COLS);
+  const col = slot % COLS;
+  const lastPage = Math.max(0, Math.ceil(ALBUMS.length / PER_PAGE) - 1);
+
+  if (dy !== 0) {
+    const nextRow = row + dy;
+    if (nextRow < 0 || nextRow >= COLS) return;             // stop at the top and bottom
+    state.cursor = clampCursor(page * PER_PAGE + nextRow * COLS + col);
+    render();
+    return;
+  }
+
+  const nextCol = col + dx;
+  if (nextCol >= 0 && nextCol < COLS) {
+    const target = page * PER_PAGE + row * COLS + nextCol;
+    if (target >= ALBUMS.length) return;                    // past the end of the last page
+    state.cursor = target;
+    render();
+    return;
+  }
+
+  // Off the edge: flip a page and land on the opposite column, same row.
+  const nextPage = page + dx;
+  if (nextPage < 0 || nextPage > lastPage) return;          // silent at the ends of the crate
+  const landingCol = dx > 0 ? 0 : COLS - 1;
+  state.cursor = clampCursor(nextPage * PER_PAGE + row * COLS + landingCol);
+  render();
+}
+
 function setVolume(delta: number): void {
   state.volume = Math.max(0, Math.min(7, state.volume + delta));
   render();
@@ -297,46 +339,61 @@ function onKey(e: KeyboardEvent): void {
   switch (e.key) {
     case "ArrowLeft":
       e.preventDefault();
-      playing ? setVolume(-1) : moveCursor(-1);
+      if (playing) setVolume(-1);
+      else if (v === "A") moveGrid(-1, 0);
+      else moveCursor(-1);
       return;
     case "ArrowRight":
       e.preventDefault();
-      playing ? setVolume(1) : moveCursor(1);
+      if (playing) setVolume(1);
+      else if (v === "A") moveGrid(1, 0);
+      else moveCursor(1);
       return;
     case "ArrowUp":
       e.preventDefault();
       if (playing) moveTrack(-1);
-      else moveCursor(v === "A" ? -COLS : -1);
+      else if (v === "A") moveGrid(0, -1);
+      else moveCursor(-1);
       return;
     case "ArrowDown":
       e.preventDefault();
       if (playing) moveTrack(1);
-      else moveCursor(v === "A" ? COLS : 1);
+      else if (v === "A") moveGrid(0, 1);
+      else moveCursor(1);
       return;
     case "Enter":
-    case " ":
       e.preventDefault();
       if (playing) {
         const { album } = state.view as { album: Album };
         state.view = { name: "playing", album, track: state.focusTrack };
         state.playing = true;
+        render();
       } else {
         play(ALBUMS[state.cursor]);
-        return;
       }
-      render();
+      return;
+    case " ":
+      // Space is play/pause everywhere, the way every media player has worked forever.
+      e.preventDefault();
+      if (playing) { state.playing = !state.playing; render(); }
+      else play(ALBUMS[state.cursor]);
       return;
     case "Escape":
     case "Backspace":
       e.preventDefault();
       if (playing) goHome();
       return;
-    case "+": case "=":
-      e.preventDefault(); setVolume(1); return;
-    case "-": case "_":
-      e.preventDefault(); setVolume(-1); return;
   }
+
+  // Volume, across layouts. On a Norwegian keyboard "+" and "-" are both unshifted keys,
+  // so e.key matches directly; NumpadAdd/Subtract and the media keys cover a keypad and
+  // anything with dedicated volume buttons. Whichever the final hardware has, it works.
+  if (VOL_UP.has(e.key) || VOL_UP.has(e.code)) { e.preventDefault(); setVolume(1); return; }
+  if (VOL_DOWN.has(e.key) || VOL_DOWN.has(e.code)) { e.preventDefault(); setVolume(-1); return; }
 }
+
+const VOL_UP = new Set(["+", "=", "NumpadAdd", "AudioVolumeUp", "PageUp"]);
+const VOL_DOWN = new Set(["-", "_", "NumpadSubtract", "AudioVolumeDown", "PageDown"]);
 
 function moveTrack(delta: number): void {
   if (state.view.name !== "playing") return;
