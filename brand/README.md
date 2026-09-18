@@ -1,10 +1,17 @@
 # Brand
 
-The mark is **the crate**: sleeves packed on a shelf, one pulled out and tipped forward mid-flip.
-A pun and a description at once — *baren* is the bar, and these are bars — and the tipped sleeve
-is the flip the whole product imitates. It is also what stops the mark reading as a bar chart.
+The mark is **the crate**: sleeve edges packed on a shelf, and one pulled out and turned to face
+you — a square with the record knocked out of it. That is both what flipping through a crate
+actually shows you and what this product is: cover art, chosen by looking.
 
-Three uprights rather than five, because anything finer turns to mush in a browser tab.
+The first draft drew five fat bars and read as a shelf of **books**, which is exactly what a
+nine-unit-wide edge on a sixty-four box is. A real sleeve seen edge-on is nearer a tenth of that,
+so the edges are 3.5 units and there are five of them, and the faced sleeve carries the signal
+that thin lines alone cannot.
+
+The trade is real and worth knowing: thin edges merge below about 24 px. What survives at 16 is
+the silhouette — a block of lines, then a square with a hole. The hole closes first and the square
+outlives it, which is the right way round.
 
 | File | Use |
 |---|---|
@@ -39,6 +46,6 @@ changes.
 
 ## Where the name comes from
 
-See PRODUCT.md, *Brand Commitments*. Short version: **Platebaren**, "the record bar", after the
-record shop in Tromsø. The name is borrowed, not licensed, which is worth revisiting before this
-repo or the product reaches anyone outside the house.
+See PRODUCT.md, *Brand Commitments*. Short version: **Platebunken**, "the record stack". It was
+briefly **Platebaren**, after the record shop in Tromsø, and changed back — the shop stays the
+inspiration rather than the name, which also means nobody has to ask whose it is.

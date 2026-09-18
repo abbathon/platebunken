@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Platebaren">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Platebunken">
   <!--
     The app mark on its own field. Colours are baked rather than `currentColor`: a favicon is
     rendered outside the page and inherits nothing from it. Amber on near-black, because it has
@@ -7,10 +7,14 @@
   -->
   <rect width="64" height="64" rx="14" fill="#ffb84d"/>
   <g fill="#0a0a0c" transform="translate(6.4 6.4) scale(0.8)">
-    <rect x="4" y="50" width="56" height="5" rx="1.5"/>
-    <rect x="8"  y="14" width="9" height="36" rx="2"/>
-    <rect x="20" y="14" width="9" height="36" rx="2"/>
-    <rect x="32" y="14" width="9" height="36" rx="2"/>
-    <rect x="42" y="10" width="9" height="40" rx="2" transform="rotate(14 46.5 50)"/>
-  </g>
+    <rect x="3" y="50" width="58" height="4.5" rx="1.5"/>
+    <rect x="5"    y="17" width="3.5" height="33" rx="1"/>
+    <rect x="10.5" y="17" width="3.5" height="33" rx="1"/>
+    <rect x="16"   y="17" width="3.5" height="33" rx="1"/>
+    <rect x="21.5" y="17" width="3.5" height="33" rx="1"/>
+    <rect x="27"   y="17" width="3.5" height="33" rx="1"/>
+    <path fill-rule="evenodd" transform="rotate(-6 34 50)"
+          d="M34 23h27v27H34z
+             M47.5 29.9a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2z"/>
+    </g>
 </svg>

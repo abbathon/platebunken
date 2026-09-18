@@ -1,4 +1,4 @@
-<img src="brand/logo.svg" alt="Platebaren" height="46">
+<img src="brand/logo.svg" alt="Platebunken" height="46">
 
 A record crate for a pre-reader.
 
@@ -17,9 +17,9 @@ The crate, the now-playing screen and the approved-set store are built; the prot
 
 ```
 Home Assistant host        Music Assistant (Qobuz + NAS + Sonos)
-                           platebaren-server (SQLite, curation, admin, MQTT)
+                           platebunken-server (SQLite, curation, admin, MQTT)
         │
-old laptop in the bedroom  Chromium kiosk → platebaren-ui
+old laptop in the bedroom  Chromium kiosk → platebunken-ui
                            audio out → powered monitors
 ```
 
@@ -45,4 +45,4 @@ Assistant entity IDs, no tokens, no addresses. The child's room is `KID_ROOM` th
 
 ## Name
 
-*Platebaren* — Norwegian for "the record stack". Earlier working name: `metalkid`.
+*Platebunken* — Norwegian for "the record stack". Earlier working name: `metalkid`.

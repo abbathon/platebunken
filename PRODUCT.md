@@ -92,22 +92,26 @@ argues for touch at this age, the parent wants mouse as a deliberate skill.
 
 ## Brand Commitments
 
-Name: **Platebaren** — Norwegian, "the record bar". Earlier names: `metalkid`, retired for being
-genre-specific and age-limited, then `Platebunken` ("the record stack"), retired in favour of this.
+Name: **Platebunken** — Norwegian, "the record stack". Earlier working name `metalkid`, retired for
+being genre-specific and age-limited. It was briefly renamed **Platebaren** after the record shop
+in Tromsø (Platebaren Feedback), the parent's own touchstone for what browsing records feels like,
+and then changed back. That is the settled answer: the shop stays the inspiration, not the name.
 
-The reference is **Platebaren (Platebaren Feedback), a record shop in Tromsø** — the parent's own
-touchstone for what browsing records feels like. Worth stating plainly, because it is a real
-business and this repo may be made public: the name is borrowed, not licensed. For a private
-appliance in one house that is nobody's problem; if this ever ships to anyone else, or the repo
-goes public under this name, it is the first thing to revisit.
+Keeping the distance is worth something beyond taste. Platebaren is a real business and this repo
+may be made public — under that name the first question anyone would ask is whether it is theirs.
+Under this one there is no question to ask.
 
-**The mark** (`brand/`) is the crate itself: sleeves packed on a shelf with one pulled out and
-tipped forward mid-flip. It is a pun and a description at once — *baren* is the bar, and these are
-bars — and the tipped sleeve is the flip the whole product imitates. Monochrome, `currentColor`,
-so it takes whatever theme it lands in.
+**The mark** (`brand/`) is the crate: sleeve edges packed on a shelf, and one pulled out and turned
+to face you — a square with the record knocked out of it. That is both what flipping through a
+crate actually shows you and what this product is, cover art chosen by looking. Monochrome,
+`currentColor`, so it takes whatever theme it lands in.
 
-It was drawn after looking at the Feedback podcast's artwork, which is what the shop's own logo
-could not be found. What was taken from it is direction — a record-shop mark is monochrome, bold,
+The first draft drew five fat bars and read as a shelf of books, which is what a sleeve edge nine
+units wide on a sixty-four box actually is. Real vinyl is nearer a tenth of that, so the edges are
+thin and the faced sleeve carries the signal instead.
+
+The shop's own logo could not be found, so the drawing was made after looking at the Feedback
+podcast's artwork. What was taken from it is direction — a record-shop mark is monochrome, bold,
 and survives being small — and nothing else. A near-copy of someone else's mark is not a brand.
 
 **The logo never appears in the child's interface.** There is no splash, no boot screen and no

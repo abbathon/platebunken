@@ -1,10 +1,10 @@
-# Platebaren — design
+# Platebunken — design
 
 > A record crate for a pre-reader. Browse album covers, put one on, hear it in your own room.
 
-Name: **Platebaren** (Norwegian, *the record bar*), after the record shop in Tromsø. Earlier
-names: `metalkid`, then `Platebunken`. The mark and the naming note are in `brand/` and
-PRODUCT.md.
+Name: **Platebunken** (Norwegian, *the record stack*). Earlier working name `metalkid`; briefly
+`Platebaren`, after the record shop in Tromsø, and changed back. The mark and the naming note are
+in `brand/` and PRODUCT.md.
 
 **Privacy rule, absolute:** no child's name, no real room labels, no Home Assistant entity IDs,
 no tokens, no IPs anywhere in this repository. Everything environment-specific lives in `.env`
@@ -55,7 +55,7 @@ computer. It does four things and refuses the fifth.
 │    ├── Sonos (S2) provider      → KID_ROOM Play:1 + others   │
 │    └── local player provider    → the laptop (see §7)        │
 │                                                              │
-│  platebaren-server     Node/TS, small                       │
+│  platebunken-server     Node/TS, small                       │
 │    ├── SQLite           the crate: approvals, counts, shelves│
 │    ├── MA client        WebSocket, persistent                │
 │    ├── curation worker  suggestions → review queue           │
@@ -65,7 +65,7 @@ computer. It does four things and refuses the fifth.
                               │ ws + http
 ┌───────────────────── old laptop, KID_ROOM ───────────────────┐
 │  Debian minimal → greetd → cage → Chromium --kiosk           │
-│    └── platebaren-ui    vanilla TS + Vite, no state         │
+│    └── platebunken-ui    vanilla TS + Vite, no state         │
 │  Audio out → Klipsch R-14PM (wired)                          │
 └──────────────────────────────────────────────────────────────┘
 ```

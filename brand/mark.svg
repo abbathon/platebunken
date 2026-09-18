@@ -1,19 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Platebaren">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Platebunken">
   <!--
-    The crate: sleeves packed on a shelf, and one pulled out and tipped forward mid-flip.
+    The crate: sleeve edges packed on a shelf, and one pulled out and turned to face you.
 
-    A pun and a description at once. "Baren" is the bar, and these are bars; the tipped sleeve
-    is the flip the whole product imitates, and it is also what stops the mark reading as a
-    chart. Three uprights rather than five, because anything finer turns to mush in a browser
-    tab, and the tipped one sits clear of the stack so the silhouette survives at 32px.
+    The first draft drew five fat bars and read as a shelf of books, which is what a 9-unit-wide
+    edge is. A record sleeve seen edge-on is nearer a tenth of that, so these are 3.5 units on a
+    64 box and there are six of them.
+
+    Thin edges alone would be ambiguous at any size, so the pulled-out one carries the signal:
+    it is turned to its face, a square with the record knocked out of it. That is both what
+    flipping through a crate actually shows you and what this product is — cover art, chosen by
+    looking. The hole closes up below about 24px and the square survives on its own, which is
+    the right way round to degrade.
+
+    It pivots on its bottom-left corner so that corner stays planted on the shelf. Pivoting on
+    the centre sank the far corner into the shelf bar and the two fused into a wedge.
 
     Monochrome and `currentColor` throughout, so it takes whatever theme it lands in.
   -->
   <g fill="currentColor">
-    <rect x="4" y="50" width="56" height="5" rx="1.5"/>
-    <rect x="8"  y="14" width="9" height="36" rx="2"/>
-    <rect x="20" y="14" width="9" height="36" rx="2"/>
-    <rect x="32" y="14" width="9" height="36" rx="2"/>
-    <rect x="42" y="10" width="9" height="40" rx="2" transform="rotate(14 46.5 50)"/>
+    <rect x="3" y="50" width="58" height="4.5" rx="1.5"/>
+    <rect x="5"    y="17" width="3.5" height="33" rx="1"/>
+    <rect x="10.5" y="17" width="3.5" height="33" rx="1"/>
+    <rect x="16"   y="17" width="3.5" height="33" rx="1"/>
+    <rect x="21.5" y="17" width="3.5" height="33" rx="1"/>
+    <rect x="27"   y="17" width="3.5" height="33" rx="1"/>
+    <path fill-rule="evenodd" transform="rotate(-6 34 50)"
+          d="M34 23h27v27H34z
+             M47.5 29.9a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2z"/>
   </g>
 </svg>
