@@ -309,8 +309,10 @@ a decade. Design passes via the Impeccable skills.
 
 - **No virtualization library.** `content-visibility: auto` + `contain-intrinsic-size` (~7× initial
   render win) suffices below a couple of thousand covers.
-- **Request thumbnails at exactly the tile size** from MA's imageproxy. Never CSS-downscale a full
-  cover — at ~4 bytes per decoded pixel that is where an old laptop dies.
+- **Request the smallest imageproxy size that covers the tile.** MA resizes to a fixed allowlist
+  only — `{0, 80, 160, 256, 512, 1024}` — and rejects anything else, so "exactly the tile size" is
+  not available. Never CSS-downscale a full cover: at ~4 bytes per decoded pixel that is where an
+  old laptop dies.
 - WebP or JPEG. **Not AVIF, not JPEG XL.**
 - `loading="lazy" decoding="async"`; `Image.decode()` to pre-warm the next row.
 - Workbox service worker, cache-first for art, `navigator.storage.persist()`. Needs a secure
