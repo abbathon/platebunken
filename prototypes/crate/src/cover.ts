@@ -1,6 +1,6 @@
 // PROTOTYPE: procedural cover art, so this runs offline and ships nobody else's artwork.
 // Real covers come from Music Assistant's imageproxy at the exact tile size.
-import type { Album } from "./albums";
+import type { Album } from "./library";
 
 const ink = (h: number, l: number, s = 70) => `hsl(${h} ${s}% ${l}%)`;
 
@@ -37,7 +37,7 @@ function mark(i: number, h: number): string {
   }
 }
 
-/** An inline SVG cover. `size` only affects the font metrics, not the geometry. */
+/** Procedural cover, used only when Music Assistant has no artwork for the album. */
 export function coverSvg(album: Album): string {
   const h = album.hue;
   const bg1 = ink(h, 11, 30);

@@ -1,6 +1,6 @@
 // PROTOTYPE — three crates on one route, switchable with ?variant=A|B|C.
 // Question: does browsing feel like flipping records, and can a 4-year-old drive it?
-import { ALBUMS, type Album } from "./albums";
+import { loadLibrary, type Album } from "./library";
 import { coverSvg } from "./cover";
 
 // ── icons: drawn, one weight, never glyphs or emoji ──────────────
@@ -25,6 +25,9 @@ const state = {
   volume: 3,        // of 7 blocks
 };
 
+const lib = await loadLibrary();
+const ALBUMS = lib.albums;
+
 const app = document.getElementById("app")!;
 const variant = (): "A" | "B" | "C" =>
   (new URLSearchParams(location.search).get("variant") ?? "A").toUpperCase() as "A" | "B" | "C";
@@ -34,11 +37,20 @@ const el = (html: string): HTMLElement => {
   t.innerHTML = html.trim();
   return t.content.firstElementChild as HTMLElement;
 };
-const coverEl = (a: Album, onPlay: (a: Album) => void): HTMLElement => {
-  const b = el(`<button class="cover" aria-label="${a.artist} – ${a.title}">${coverSvg(a)}</button>`);
+const art = (a: Album, which: "sm" | "lg"): string =>
+  a.cover
+    ? `<img src="${a.cover[which]}" alt="" loading="lazy" decoding="async" draggable="false">`
+    : coverSvg(a); // no artwork in MA — the gap should be visible, not a broken tile
+
+const coverEl = (a: Album, onPlay: (a: Album) => void, which: "sm" | "lg" = "sm"): HTMLElement => {
+  const b = el(`<button class="cover" aria-label="${esc(a.artist)} – ${esc(a.title)}">${art(a, which)}</button>`);
   b.addEventListener("click", () => onPlay(a));
   return b;
 };
+
+function esc(s: string) {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+}
 const play = (album: Album, track = 1) => {
   state.view = { name: "playing", album, track };
   state.playing = true;
@@ -119,20 +131,23 @@ function shelf(): HTMLElement {
 // ── now playing — shared by all three ────────────────────────────
 function nowPlaying(album: Album, track: number): HTMLElement {
   const root = el(`<section class="stage np">
-    <div class="np__art"><div class="cover" style="cursor:default">${coverSvg(album)}</div></div>
+    <div class="np__art"><div class="cover" style="cursor:default">${art(album, "lg")}</div></div>
     <div class="np__side">
       <div>
-        <h1 class="np__artist">${album.artist.toUpperCase()}</h1>
-        <p class="np__album">${album.title} · ${album.year}</p>
+        <h1 class="np__artist">${esc(album.artist.toUpperCase())}</h1>
+        <p class="np__album">${esc(album.title)}${album.year ? ` · ${album.year}` : ""}</p>
       </div>
       <ol class="tracks"></ol>
       <div class="transport"></div>
     </div></section>`);
 
   const list = root.querySelector(".tracks")!;
+  if (album.tracks.length === 0) {
+    list.append(el(`<li class="tracks__none">Music Assistant returned no tracks for this album.</li>`));
+  }
   album.tracks.forEach((t) => {
     const row = el(`<li><button class="track" aria-current="${t.n === track}">
-      <span class="track__n">${t.n}</span><span class="track__t">${t.title}</span></button></li>`);
+      <span class="track__n">${t.n}</span><span class="track__t">${esc(t.title)}</span></button></li>`);
     row.querySelector("button")!.addEventListener("click", () => {
       state.view = { name: "playing", album, track: t.n }; state.playing = true; render();
     });
@@ -164,8 +179,9 @@ const NAMES = { A: "Vegg · the wall", B: "Bunken · the stack", C: "Hylla · th
 function switcher(): HTMLElement {
   const keys = ["A", "B", "C"] as const;
   const cur = variant();
+  const src = lib.source === "live" ? `${ALBUMS.length} real albums` : "mock data";
   const bar = el(`<div class="switch"><button aria-label="Previous variant">←</button>
-    <span>${cur} (${NAMES[cur]})</span><button aria-label="Next variant">→</button></div>`);
+    <span>${cur} (${NAMES[cur]}) · ${src}</span><button aria-label="Next variant">→</button></div>`);
   const hop = (d: number) => {
     const i = (keys.indexOf(cur) + d + keys.length) % keys.length;
     const u = new URL(location.href); u.searchParams.set("variant", keys[i]);

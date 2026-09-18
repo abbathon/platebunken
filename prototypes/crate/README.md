@@ -13,9 +13,25 @@ Three structurally different crates, switchable with `?variant=`:
 
 Run: `npm run prototype`. Arrow keys or the bottom bar switch variants.
 
-Mock data only — no Music Assistant, no network at runtime. Covers are generated
-procedurally so the prototype runs offline and ships no one else's artwork; they are
-deliberately high-contrast and distinct, which is what the child actually navigates by.
+## Data
+
+```
+npm run snapshot     # dump the real library to public/library.json
+npm run prototype
+```
+
+The page loads `library.json` if it is there and falls back to the mock set if not, so it
+always runs. The bottom bar says which it is showing. The snapshot is **gitignored** — it
+is a dump of a private music library.
+
+The prototype holds no token. `snapshot.ts` uses the Node client, and cover URLs point at
+MA's imageproxy, which serves unauthenticated — so real artwork renders with no credential
+in the page. Never use the raw `path` from `metadata.images[]`: it is the source provider's
+own URL, embeds that provider's API key, and may be unreachable from the kiosk.
+
+Albums with no artwork in MA fall back to a procedural cover rather than a broken tile, so
+the gaps in the library stay visible. That matters: in a cover-art interface, an untagged
+album is an invisible album.
 
 **Not production.** No error handling, no tests, no persistence. The font loads from
 Google Fonts, which the real kiosk cannot do — production must self-host.

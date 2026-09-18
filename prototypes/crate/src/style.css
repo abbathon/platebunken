@@ -157,3 +157,6 @@ html, body {
 .switch button { min-width: 34px; height: 34px; border: 0; border-radius: 999px; background: #eee; cursor: pointer; font: inherit; }
 .switch button:hover { background: #ddd; }
 .switch span { padding: 0 12px; }
+
+.cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tracks__none { color: var(--ink-dim); font-size: 17px; padding: 20px 12px; list-style: none; }

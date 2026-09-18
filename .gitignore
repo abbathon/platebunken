@@ -30,3 +30,6 @@ __pycache__/
 # Local harness state — embeds absolute home paths
 .claude/settings.local.json
 .impeccable/config.local.json
+
+# A dump of a private music library — never commit.
+prototypes/crate/public/library.json
