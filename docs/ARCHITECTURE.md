@@ -201,6 +201,46 @@ inactivity. **No back button** — "back" is a stack concept and he does not hav
   he holds, and a confirmation dialog is useless to someone who cannot read it.
 - **No boot, no splash, no loading state, no empty state.** Instant time-to-music.
 
+### 4.6 Themes
+
+A four-year-old who is currently deep into vikings should be able to have a viking record
+player. `src/theme/themes.ts` holds the themes as pure data; the prototype renders them.
+
+A theme is bounded hard, because PRODUCT.md is explicit that the product's visual world must not
+compete with the covers it displays:
+
+1. **Chrome only.** Background, frame, buttons, page furniture. A theme never overlays, tints,
+   crops, filters or decorates the artwork. The sleeve is untouchable.
+2. **The parent sets it.** The device never asks the child a question, so there is no theme
+   picker in the crate. It is config, later an admin-app setting. In the prototype it is
+   `?theme=`, and Shift + ↑↓ cycles, so three themes can be tried in front of him in a minute —
+   which is the only way to find out whether vikings are actually this week's thing.
+3. **A theme carries no spatial information.** No position, no layout, no target size, no key
+   mapping. That is precisely what makes themes the *one* thing in this product that can be
+   changed freely: switching from `natt` to `vikingtid` cannot move anything he has memorised,
+   because a theme holds nothing that could move. A test enforces it.
+4. **Motion is a reply, not a performance.** The selection frame settles when a key is pressed
+   and arrives from the direction the hand moved. A ring that pulses on its own in a dark
+   bedroom is a night-light and a visualiser, both of which §4.3 rules out. Free-running drift
+   is a per-theme `breath` flag, off by default, and it yields to `prefers-reduced-motion`.
+
+**The selected sleeve.** The lift and the focus state live on the slot rather than the cover, so
+the frame travels with the sleeve instead of peeling off it. Corner ornaments are four placed
+SVGs, never one stretched frame — the tile size is viewport-derived, and knotwork stretched to a
+non-square tile stops being knotwork.
+
+Three themes ship: `natt` (the default; least visual world, most album art), `vikingtid` (carved
+oak, iron and ember), and `romfart` (deep space). The third exists so the second is a system
+rather than a special case — the older child will want his own.
+
+`src/theme/themes.test.ts` asserts the contrast floors per theme: body text at AAA, the play
+button's label on the accent at AA, and the selection ring against the background. The child
+cannot read, so the ring is the only thing telling him which sleeve is live, and a theme author
+picking pretty colours must not be able to take that away.
+
+The *visual* system beyond this — type, spacing, the rest — is `DESIGN.md`, owned by the
+`impeccable` skill. This section owns only the rules a theme may not break.
+
 ---
 
 ## 5. Curation

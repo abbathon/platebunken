@@ -1,5 +1,12 @@
 /* PROTOTYPE styles. Dark by use-scene: this lives in a bedroom, often at night,
-   and album art is the only thing that should carry colour. */
+   and album art is the only thing that should carry colour.
+
+   Colour lives in themes (src/theme/themes.ts), applied as custom properties at startup.
+   The values below are the `natt` theme repeated, so the page is never unstyled if the
+   script is slow — the child must never see a half-painted screen.
+
+   --target and --flip are NOT themeable. A theme carries no spatial information; that is
+   what makes it the one thing here that can be changed without moving what he remembers. */
 :root {
   --ink:        #f4f1ea;
   --ink-dim:    #a49e93;
@@ -9,6 +16,18 @@
   --edge:       #2a2830;
   --glow:       #ffb84d;   /* tube-amber: the only accent */
   --glow-deep:  #7a4a06;
+  --on-glow:     #17120a;  /* ink that sits ON the accent */
+  --on-glow-dim: #4a3a12;
+  --focus-soft:  #241f14;
+
+  --frame-ring:   var(--glow);
+  --frame-orn:    var(--glow);
+  --frame-halo:   rgb(255 184 77 / 0.10);
+  --frame-ring-w: 6px;
+  --frame-offset: 6px;
+  --frame-corner: 0px;
+  --frame-settle: 150ms;
+
   --target:     76px;      /* NN/g children's floor. Never go below this. */
   --flip: 420ms cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -24,7 +43,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-::selection { background: var(--glow); color: #17120a; }
+::selection { background: var(--glow); color: var(--on-glow); }
 :focus-visible { outline: 3px solid var(--glow); outline-offset: 3px; border-radius: 4px; }
 
 /* No text selection or callouts anywhere the child touches. */
@@ -61,11 +80,11 @@ html, body {
 }
 .btn svg { width: 34px; height: 34px; fill: currentColor; }
 .btn:active { transform: scale(0.94); }
-@media (hover: hover) { .btn:hover { background: #1e1c23; border-color: #443f4e; } }
+@media (hover: hover) { .btn:hover { background: color-mix(in oklab, var(--bg-raised) 86%, var(--ink)); border-color: color-mix(in oklab, var(--edge) 72%, var(--ink)); } }
 .btn--lg { min-width: 108px; min-height: 108px; }
 .btn--lg svg { width: 48px; height: 48px; }
-.btn--play { background: var(--glow); color: #17120a; border-color: transparent; }
-@media (hover: hover) { .btn--play:hover { background: #ffc76e; } }
+.btn--play { background: var(--glow); color: var(--on-glow); border-color: transparent; }
+@media (hover: hover) { .btn--play:hover { background: color-mix(in oklab, var(--glow) 86%, white); } }
 .btn[disabled] { opacity: 0.28; pointer-events: none; }
 
 /* Edge dead-zones: children press with the whole finger pad, often at an angle. */
@@ -123,7 +142,7 @@ html, body {
 .track {
   display: grid; grid-template-columns: 78px 1fr; align-items: center;
   gap: 16px; min-height: 96px; width: 100%;
-  background: none; border: 0; border-bottom: 1px solid #1b1a20; color: inherit;
+  background: none; border: 0; border-bottom: 1px solid color-mix(in oklab, var(--bg) 66%, var(--edge)); color: inherit;
   text-align: left; cursor: pointer; padding: 0 12px;
 }
 .track__n {
@@ -131,16 +150,16 @@ html, body {
   font-variant-numeric: tabular-nums; letter-spacing: -0.04em;
   color: var(--ink-dim); text-align: right;
 }
-.track__t { font-size: 18px; color: #948d83; }  /* 6.1:1 — was failing at 3.8:1 */
+.track__t { font-size: 18px; color: var(--ink-dim); }  /* themed; the contrast floor is tested in src/theme */
 .track[aria-current="true"] { background: var(--glow); border-radius: 6px; border-bottom-color: transparent; }
-.track[aria-current="true"] .track__n { color: #17120a; }
-.track[aria-current="true"] .track__t { color: #4a3a12; }
-@media (hover: hover) { .track:hover:not([aria-current="true"]) { background: #141317; border-radius: 6px; } }
+.track[aria-current="true"] .track__n { color: var(--on-glow); }
+.track[aria-current="true"] .track__t { color: var(--on-glow-dim); }
+@media (hover: hover) { .track:hover:not([aria-current="true"]) { background: var(--bg-raised); border-radius: 6px; } }
 
 .transport { display: flex; gap: 18px; align-items: center; }
 .vol { display: flex; gap: 14px; align-items: center; }
 .vol__blocks { display: flex; gap: 7px; }
-.vol__b { width: 22px; height: 46px; border-radius: 3px; background: #201e26; }
+.vol__b { width: 22px; height: 46px; border-radius: 3px; background: color-mix(in oklab, var(--bg-raised) 78%, var(--edge)); }
 .vol__b[data-on="1"] { background: var(--glow); }
 
 /* ── home ─────────────────────────────────────────────────────── */
@@ -157,29 +176,92 @@ html, body {
 .switch button { min-width: 34px; height: 34px; border: 0; border-radius: 999px; background: #eee; cursor: pointer; font: inherit; }
 .switch button:hover { background: #ddd; }
 .switch span { padding: 0 12px; }
+.switch__theme { min-width: 0 !important; padding: 0 12px; background: #222 !important; color: #fff; }
+.switch__theme:hover { background: #333 !important; }
 
 .cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .tracks__none { color: var(--ink-dim); font-size: 17px; padding: 20px 12px; list-style: none; }
 
 /* ── keyboard focus ───────────────────────────────────────────────
-   The child cannot read, so the selected sleeve must be obvious from across
-   a room: it lifts, it is ringed in the accent, and everything else recedes.
-   Subtle focus styling is for people who know what focus is. */
-.wall__grid:has([data-focus="1"]) .cover:not([data-focus="1"]) { opacity: 0.62; }
-.shelf__rail:has([data-focus="1"]) .cover:not([data-focus="1"]) { opacity: 0.6; }
+   The child cannot read, so the selected sleeve must be obvious from across a room: it
+   lifts, it is framed in the theme's accent, and everything else recedes. Subtle focus
+   styling is for people who already know what focus is.
 
-.cover[data-focus="1"] {
-  outline: 6px solid var(--glow);
-  outline-offset: 6px;
-  transform: translateY(-8px) scale(1.04);
-  box-shadow: 0 6px 12px rgb(0 0 0 / 0.6), 0 30px 60px -16px rgb(0 0 0 / 0.95),
-              0 0 0 14px rgb(255 184 77 / 0.10);
+   The slot carries focus and the lift, not the cover, so the frame travels with the sleeve
+   instead of peeling off it. */
+.slot { position: relative; display: block; width: 100%; transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1); }
+.slot[data-focus="1"] { z-index: 2; transform: translateY(-8px) scale(1.04); }
+.slot[data-focus="1"] .cover {
+  box-shadow: 0 6px 12px rgb(0 0 0 / 0.6), 0 30px 60px -16px rgb(0 0 0 / 0.95);
 }
-/* The stack shows one sleeve at a time; a ring there would just be noise. */
-.stack .cover[data-focus="1"] { outline: none; transform: none; }
+.wall__grid:has(.slot[data-focus="1"]) .slot:not([data-focus="1"]) .cover { opacity: 0.62; }
+.shelf__rail:has(.slot[data-focus="1"]) .slot:not([data-focus="1"]) .cover { opacity: 0.6; }
+
+/* ── the frame ────────────────────────────────────────────────────
+   Themed chrome. It sits OUTSIDE the artwork, offset off the edge, and never over it:
+   the cover is the interface and a theme is only the room it hangs in. */
+.frame {
+  position: absolute;
+  inset: calc(var(--frame-offset) * -1);
+  border: var(--frame-ring-w) solid var(--frame-ring);
+  border-radius: 5px;
+  color: var(--frame-orn);
+  /* Soft, not a hard band: a 14px spread reads as a second rectangle stacked behind the
+     sleeve rather than as light coming off the frame. */
+  box-shadow: 0 0 34px 10px var(--frame-halo);
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* Every slot renders a frame; only the focused one is shown. The grid is rebuilt on each
+   keypress, so a transition would have nothing to transition from — the settle has to be a
+   keyframe animation that runs when a focused frame first appears. */
+.slot[data-focus="1"] .frame {
+  animation: frame-settle var(--frame-settle) cubic-bezier(0.2, 1.35, 0.4, 1) both;
+}
+.slot[data-focus="1"] .frame[data-breath="1"] {
+  animation: frame-settle var(--frame-settle) cubic-bezier(0.2, 1.35, 0.4, 1) both,
+             frame-breath 6s var(--frame-settle) infinite ease-in-out;
+}
+
+/* The frame arrives from the direction the hand moved: --from-x/--from-y are set per
+   keypress. Motion tied to input is feedback; motion that runs on its own is a visualiser. */
+@keyframes frame-settle {
+  from { opacity: 0; transform: translate(var(--from-x, 0px), var(--from-y, 0px)) scale(0.955); }
+  60%  { opacity: 1; }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes frame-breath {
+  0%, 100% { box-shadow: 0 0 30px 6px var(--frame-halo); }
+  50%      { box-shadow: 0 0 52px 16px var(--frame-halo); }
+}
+
+/* Corners are placed, never stretched: one scaled SVG would distort knotwork the moment a
+   tile stops being square, and the tile size is derived from the viewport. */
+.frame__c {
+  position: absolute; line-height: 0;
+  width: var(--frame-corner); height: var(--frame-corner);
+  margin: calc(var(--frame-ring-w) * -1);
+}
+.frame__c svg { display: block; width: 100%; height: 100%; }
+.frame__c--tl { top: 0; left: 0; }
+.frame__c--tr { top: 0; right: 0; transform: scaleX(-1); }
+.frame__c--bl { bottom: 0; left: 0; transform: scaleY(-1); }
+.frame__c--br { bottom: 0; right: 0; transform: scale(-1); }
+
+/* The stack shows one sleeve at a time, so a frame there marks nothing and is just noise. */
+.stack .slot[data-focus="1"] { transform: none; }
+.stack .frame { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .slot,
+  .slot[data-focus="1"] .frame,
+  .slot[data-focus="1"] .frame[data-breath="1"] { animation: none; transition: none; }
+  .slot[data-focus="1"] .frame { opacity: 1; }
+}
 
 .track[data-focus="1"]:not([aria-current="true"]) {
-  background: #241f14;
+  background: var(--focus-soft);
   border-radius: 6px;
   outline: 3px solid var(--glow);
   outline-offset: -3px;

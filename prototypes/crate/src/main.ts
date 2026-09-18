@@ -2,6 +2,7 @@
 // Question: does browsing feel like flipping records, and can a 4-year-old drive it?
 import { loadLibrary, seedCount, type Album } from "./library";
 import { coverSvg } from "./cover";
+import { THEMES, applyTheme, currentTheme, frameEl, setEntryDirection } from "./theme";
 
 // ── icons: drawn, one weight, never glyphs or emoji ──────────────
 const ICON = {
@@ -24,6 +25,8 @@ const state = {
   focusTrack: 1,    // focused row in the track list
   playing: false,
   volume: 3,        // of 7 blocks
+  // Direction of the last move, so the selection frame arrives from where the hand came.
+  from: { x: 0, y: 0 },
 };
 
 const PER_PAGE = 9;
@@ -56,6 +59,11 @@ function warmCovers(): void {
 }
 warmCovers();
 
+// The theme is chrome only: background, frame, buttons. It never touches the artwork, and
+// it carries no position, so changing it cannot move anything the child has memorised.
+const THEME = currentTheme();
+applyTheme(THEME);
+
 const app = document.getElementById("app")!;
 const variant = (): "A" | "B" | "C" =>
   (new URLSearchParams(location.search).get("variant") ?? "A").toUpperCase() as "A" | "B" | "C";
@@ -83,12 +91,24 @@ function withImageFallback(host: HTMLElement, a: Album): void {
   img.addEventListener("error", () => { host.innerHTML = coverSvg(a); host.dataset.artFailed = "1"; }, { once: true });
 }
 
+/**
+ * A sleeve in its slot. The slot, not the button, carries focus and the lift, so the frame
+ * travels with the cover instead of peeling off it.
+ */
 const coverEl = (a: Album, onPlay: (a: Album) => void, which: "sm" | "lg" = "sm"): HTMLElement => {
   const b = el(`<button class="cover" aria-label="${esc(a.artist)} – ${esc(a.title)}">${art(a, which)}</button>`);
   withImageFallback(b, a);
   b.addEventListener("click", () => onPlay(a));
-  return b;
+  const slot = el(`<div class="slot"></div>`);
+  slot.append(b, frameEl(THEME));
+  return slot;
 };
+
+/** Mark a slot selected and tell its frame which way the hand just moved. */
+function focusSlot(slot: HTMLElement): void {
+  slot.dataset.focus = "1";
+  setEntryDirection(slot, state.from.x, state.from.y);
+}
 
 function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -111,7 +131,7 @@ function wall(): HTMLElement {
   const grid = root.querySelector(".wall__grid")!;
   ALBUMS.slice(state.page * per, state.page * per + per).forEach((a, i) => {
     const cell = coverEl(a, play);
-    if (state.page * per + i === state.cursor) cell.dataset.focus = "1";
+    if (state.page * per + i === state.cursor) focusSlot(cell);
     grid.append(cell);
   });
 
@@ -142,7 +162,7 @@ function stack(): HTMLElement {
     card.style.zIndex = String(10 - d);
     card.style.pointerEvents = d ? "none" : "auto";
     const cell = coverEl(a, play);
-    if (d === 0) cell.dataset.focus = "1";
+    if (d === 0) focusSlot(cell);
     card.append(cell);
     deck.append(card);
   }
@@ -166,7 +186,7 @@ function shelf(): HTMLElement {
     const near = Math.min(2, Math.abs(i - state.cursor));
     const slot = el(`<div class="shelf__slot" data-near="${near}" data-focus="${i === state.cursor ? 1 : 0}"></div>`);
     const cell = coverEl(a, (al) => (i === state.cursor ? play(al) : (state.cursor = i, render())));
-    if (i === state.cursor) cell.dataset.focus = "1";
+    if (i === state.cursor) focusSlot(cell);
     slot.append(cell);
     rail.append(slot);
   });
@@ -231,6 +251,18 @@ function nowPlaying(album: Album, track: number): HTMLElement {
 // ── switcher: obviously not part of the design being judged ──────
 const NAMES = { A: "Vegg · the wall", B: "Bunken · the stack", C: "Hylla · the shelf" };
 
+/**
+ * Try another theme without a reload. The child will never do this — on the kiosk the theme
+ * is config the parent sets — but showing him three in a minute is how you find out whether
+ * vikings are actually the thing this week.
+ */
+function hopTheme(d: number): void {
+  const i = (THEMES.findIndex((t) => t.id === THEME.id) + d + THEMES.length) % THEMES.length;
+  const u = new URL(location.href);
+  u.searchParams.set("theme", THEMES[i]!.id);
+  location.href = u.toString();
+}
+
 function hopVariant(d: number): void {
   const keys = ["A", "B", "C"] as const;
   const i = (keys.indexOf(variant()) + d + keys.length) % keys.length;
@@ -249,9 +281,11 @@ function switcher(): HTMLElement {
       ? `${ALBUMS.length} albums · WHOLE LIBRARY, not curated`
       : `${ALBUMS.length} curated`;
   const bar = el(`<div class="switch"><button aria-label="Previous variant">←</button>
-    <span>${cur} (${NAMES[cur]}) · ${src}</span><button aria-label="Next variant">→</button></div>`);
+    <span>${cur} (${NAMES[cur]}) · ${src}</span><button aria-label="Next variant">→</button>
+    <button class="switch__theme" aria-label="Next theme">${THEME.label}</button></div>`);
   bar.children[0].addEventListener("click", () => hopVariant(-1));
   bar.children[2].addEventListener("click", () => hopVariant(1));
+  bar.children[3].addEventListener("click", () => hopTheme(1));
   return bar;
 }
 
@@ -263,6 +297,7 @@ function switcher(): HTMLElement {
 //
 //   ← ↑ → ↓   move            Enter / Space  play        Esc  back to the crate
 //   + / -     volume          Shift + ← →    switch prototype variant
+//                             Shift + ↑ ↓    switch theme
 
 function clampCursor(n: number): number {
   return Math.max(0, Math.min(ALBUMS.length - 1, n));
@@ -271,6 +306,7 @@ function clampCursor(n: number): number {
 function moveCursor(delta: number): void {
   const next = clampCursor(state.cursor + delta);
   if (next === state.cursor) return;   // silent at the ends: no error, nothing happens
+  state.from = { x: Math.sign(delta), y: 0 };
   state.cursor = next;
   render();
 }
@@ -295,6 +331,7 @@ function moveGrid(dx: number, dy: number): void {
   if (dy !== 0) {
     const nextRow = row + dy;
     if (nextRow < 0 || nextRow >= COLS) return;             // stop at the top and bottom
+    state.from = { x: 0, y: dy };
     state.cursor = clampCursor(page * PER_PAGE + nextRow * COLS + col);
     render();
     return;
@@ -304,6 +341,7 @@ function moveGrid(dx: number, dy: number): void {
   if (nextCol >= 0 && nextCol < COLS) {
     const target = page * PER_PAGE + row * COLS + nextCol;
     if (target >= ALBUMS.length) return;                    // past the end of the last page
+    state.from = { x: dx, y: 0 };
     state.cursor = target;
     render();
     return;
@@ -313,6 +351,7 @@ function moveGrid(dx: number, dy: number): void {
   const nextPage = page + dx;
   if (nextPage < 0 || nextPage > lastPage) return;          // silent at the ends of the crate
   const landingCol = dx > 0 ? 0 : COLS - 1;
+  state.from = { x: dx, y: 0 };
   state.cursor = clampCursor(nextPage * PER_PAGE + row * COLS + landingCol);
   render();
 }
@@ -326,10 +365,15 @@ function onKey(e: KeyboardEvent): void {
   const tag = (e.target as HTMLElement)?.tagName ?? "";
   if (/^(INPUT|TEXTAREA)$/.test(tag)) return;
 
-  // Variant switching is prototype chrome, so it gets out of the child's way.
+  // Variant and theme switching are prototype chrome, so they get out of the child's way.
   if (e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
     e.preventDefault();
     hopVariant(e.key === "ArrowLeft" ? -1 : 1);
+    return;
+  }
+  if (e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    e.preventDefault();
+    hopTheme(e.key === "ArrowUp" ? -1 : 1);
     return;
   }
 

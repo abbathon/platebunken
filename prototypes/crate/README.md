@@ -11,7 +11,18 @@ Three structurally different crates, switchable with `?variant=`:
 | `B` | Bunken (the stack) | Flip one cover at a time, then play | 3 |
 | `C` | Hylla (the shelf) | Slide a strip, play the focused cover | 1 + slide |
 
-Run: `npm run prototype`. Arrow keys or the bottom bar switch variants.
+Run: `npm run prototype`. Arrow keys drive the crate; Shift + ←→ switches variant.
+
+## Themes
+
+`?theme=natt|vikingtid|romfart`, or Shift + ↑↓, or the button in the top-right bar. Themes are
+chrome only — background, frame, buttons — and never touch the artwork. They live in
+`src/theme/themes.ts`, which is pure data and outlives this prototype. See ARCHITECTURE.md §4.6
+for what a theme is not allowed to do.
+
+The selected sleeve's frame is themed: a ring, optional corner ornaments, and a settle that
+arrives from the direction the hand moved. Show the child all three in a minute and watch which
+one he reacts to — that is what the switcher is for.
 
 ## Data
 
