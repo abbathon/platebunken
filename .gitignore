@@ -1,0 +1,28 @@
+# Environment-specific configuration — NEVER commit.
+# Contains Home Assistant / Music Assistant entity IDs, tokens, IPs, room names.
+.env
+.env.*
+!.env.example
+config.local.*
+secrets.*
+
+# Local state
+*.sqlite
+*.sqlite3
+*.db
+data/
+cache/
+covers/
+
+# Deps / build
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+.idea/
+*.swp
