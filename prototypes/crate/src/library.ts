@@ -5,6 +5,8 @@ import { ALBUMS as MOCK, type Album as MockAlbum } from "./albums";
 export type Cover = { sm: string; lg: string };
 export type Album = {
   id: string;
+  /** In the parent's seed playlist — i.e. actually curated, not just present in the library. */
+  seed: boolean;
   artist: string;
   title: string;
   year: number | null;
@@ -37,12 +39,14 @@ function seed(id: string): { hue: number; mark: number } {
 }
 
 const fromMock = (a: MockAlbum): Album => ({
-  id: a.id, artist: a.artist, title: a.title, year: a.year, explicit: null,
+  id: a.id, seed: false, artist: a.artist, title: a.title, year: a.year, explicit: null,
   cover: null, hue: a.hue, mark: a.mark,
   tracks: a.tracks.map((t) => ({ n: t.n, title: t.title })),
 });
 
 export type Library = { albums: Album[]; source: "live" | "mock"; generatedAt?: string };
+
+export const seedCount = (albums: Album[]) => albums.filter((a) => a.seed).length;
 
 export async function loadLibrary(): Promise<Library> {
   try {
@@ -51,6 +55,7 @@ export async function loadLibrary(): Promise<Library> {
     const data = await res.json();
     const albums: Album[] = data.albums.map((a: any) => ({
       id: a.id,
+      seed: !!a.seed,
       artist: a.artist || "—",
       title: a.title,
       year: a.year ?? null,
@@ -59,6 +64,8 @@ export async function loadLibrary(): Promise<Library> {
       ...seed(a.id),
       tracks: a.tracks?.length ? a.tracks : [],
     }));
+    // Curated albums first: the crate is the approved set, the rest is the library behind it.
+    albums.sort((a, b) => Number(b.seed) - Number(a.seed));
     return { albums, source: "live", generatedAt: data.generatedAt };
   } catch {
     return { albums: MOCK.map(fromMock), source: "mock" };

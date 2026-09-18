@@ -1,6 +1,6 @@
 // PROTOTYPE — three crates on one route, switchable with ?variant=A|B|C.
 // Question: does browsing feel like flipping records, and can a 4-year-old drive it?
-import { loadLibrary, type Album } from "./library";
+import { loadLibrary, seedCount, type Album } from "./library";
 import { coverSvg } from "./cover";
 
 // ── icons: drawn, one weight, never glyphs or emoji ──────────────
@@ -193,7 +193,9 @@ const NAMES = { A: "Vegg · the wall", B: "Bunken · the stack", C: "Hylla · th
 function switcher(): HTMLElement {
   const keys = ["A", "B", "C"] as const;
   const cur = variant();
-  const src = lib.source === "live" ? `${ALBUMS.length} real albums` : "mock data";
+  const src = lib.source === "live"
+    ? `${ALBUMS.length} albums · ${seedCount(ALBUMS)} curated`
+    : "mock data";
   const bar = el(`<div class="switch"><button aria-label="Previous variant">←</button>
     <span>${cur} (${NAMES[cur]}) · ${src}</span><button aria-label="Next variant">→</button></div>`);
   const hop = (d: number) => {

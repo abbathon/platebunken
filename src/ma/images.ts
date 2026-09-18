@@ -24,7 +24,14 @@ export function coverProxyId(item: { metadata?: { images?: { type: string; proxy
 }
 
 export function coverUrl(baseUrl: string, imageId: string, cssPx: number, dpr = 1): string {
-  const u = new URL(`/imageproxy/${encodeURIComponent(imageId)}`, baseUrl);
-  u.searchParams.set("size", String(pickSize(cssPx, dpr)));
+  const u = new URL(coverPath(imageId, cssPx, dpr), baseUrl);
   return u.toString();
+}
+
+/**
+ * Host-less form, for a page that should reach the proxy through its own origin. Keeps
+ * mDNS, IP changes and cross-origin behaviour out of the browser entirely.
+ */
+export function coverPath(imageId: string, cssPx: number, dpr = 1): string {
+  return `/imageproxy/${encodeURIComponent(imageId)}?size=${pickSize(cssPx, dpr)}`;
 }
