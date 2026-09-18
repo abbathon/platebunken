@@ -1,5 +1,5 @@
 import type { Album, Player, ServerInfo, Track } from "./types.ts";
-import { WRITTEN_AGAINST_SCHEMA } from "./types.ts";
+import { CLIENT_MIN_SERVER_SCHEMA } from "./types.ts";
 
 /**
  * Music Assistant WebSocket client.
@@ -136,10 +136,19 @@ export class MassClient {
   }
 
   #assertSchema(info: ServerInfo): void {
-    if (WRITTEN_AGAINST_SCHEMA < info.min_supported_schema_version) {
+    // Fail loudly and specifically. A silent schema drift here surfaces months later as
+    // "the music stopped working" with no clue attached.
+    if (info.schema_version < CLIENT_MIN_SERVER_SCHEMA) {
       throw new Error(
-        `This client speaks schema ${WRITTEN_AGAINST_SCHEMA} but the server requires at least ` +
-        `${info.min_supported_schema_version}. Update the client.`,
+        `Music Assistant reports schema ${info.schema_version}, but this client needs at least ` +
+        `${CLIENT_MIN_SERVER_SCHEMA}. Upgrade Music Assistant, or re-verify the commands against ` +
+        `this server's /api-docs/commands.json.`,
+      );
+    }
+    if (CLIENT_MIN_SERVER_SCHEMA < info.min_supported_schema_version) {
+      throw new Error(
+        `This client targets schema ${CLIENT_MIN_SERVER_SCHEMA} but the server has dropped support ` +
+        `below ${info.min_supported_schema_version}. Update the client.`,
       );
     }
   }

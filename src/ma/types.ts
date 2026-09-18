@@ -47,5 +47,15 @@ export interface ServerInfo {
   base_url: string;
 }
 
-/** The schema this client was written against. */
-export const WRITTEN_AGAINST_SCHEMA = 77;
+/**
+ * Verified live against Music Assistant **2.9.9, API schema 31** by reading that server's
+ * own `/api-docs/commands.json` — not a GitHub branch. Every command and argument name
+ * this client uses was confirmed present there.
+ *
+ * Note for future readers: the research in docs/research/01 was written against the `dev`
+ * branch at schema 77, which is far ahead of any released version. When the two disagree,
+ * the running server's published spec wins. Re-check with:
+ *
+ *   curl -s http://<ma-host>:8095/api-docs/commands.json | jq -r '.[].command'
+ */
+export const CLIENT_MIN_SERVER_SCHEMA = 31;

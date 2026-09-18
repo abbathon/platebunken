@@ -84,8 +84,13 @@ MA already serves sized thumbnails at `/imageproxy/<id>?size=N`. `node-sonos-htt
 (last commit 2025-03-22, last tagged release 2017). Roon costs $15/month and wants a newer machine.
 Full comparison in `research/01`.
 
+**Verified deployment.** MA **2.9.9, API schema 31**, running as a Home Assistant add-on.
+The authoritative command reference is that server's own `/api-docs/commands.json` — 238
+commands — not any GitHub branch. Every command this app calls was confirmed present there.
+
 **Client auth.** A dedicated non-admin MA user with `library.read` + `queues.control` +
-`players.control` only. **The long-lived token expires in 365 days** — the docs claim ten years,
+`players.control` only. `auth/token/create` has `required_role: null`, so that user can mint
+its own long-lived token once logged in; no admin account needs to be involved. **The long-lived token expires in 365 days** — the docs claim ten years,
 the code says otherwise. Diarise it.
 
 ---
@@ -234,6 +239,12 @@ and wind the volume down — a recovery path, and an automation hook. The front 
 (**white = USB**), which is a rule a four-year-old can learn.
 
 ### 7.2 The laptop as a Music Assistant player
+
+> **Version warning.** Everything in this subsection came from MA's `dev` branch at API
+> schema 77. The deployed server is **2.9.9, schema 31**, and neither `sendspin` nor
+> `local_audio` appears anywhere in its published command list. Treat the below as a
+> description of a future version and re-check the available player providers on the
+> running server (`providers/manifests`) before building against any of it.
 
 MA's old `builtin_player` is gone; the browser web player is now a **Sendspin** client over a
 WebRTC DataChannel. It is fully targetable with volume 0–100 and gets lossless FLAC on a LAN
