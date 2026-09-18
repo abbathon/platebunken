@@ -160,3 +160,28 @@ html, body {
 
 .cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .tracks__none { color: var(--ink-dim); font-size: 17px; padding: 20px 12px; list-style: none; }
+
+/* ── keyboard focus ───────────────────────────────────────────────
+   The child cannot read, so the selected sleeve must be obvious from across
+   a room: it lifts, it is ringed in the accent, and everything else recedes.
+   Subtle focus styling is for people who know what focus is. */
+.wall__grid:has([data-focus="1"]) .cover:not([data-focus="1"]) { opacity: 0.62; }
+.shelf__rail:has([data-focus="1"]) .cover:not([data-focus="1"]) { opacity: 0.6; }
+
+.cover[data-focus="1"] {
+  outline: 6px solid var(--glow);
+  outline-offset: 6px;
+  transform: translateY(-8px) scale(1.04);
+  box-shadow: 0 6px 12px rgb(0 0 0 / 0.6), 0 30px 60px -16px rgb(0 0 0 / 0.95),
+              0 0 0 14px rgb(255 184 77 / 0.10);
+}
+/* The stack shows one sleeve at a time; a ring there would just be noise. */
+.stack .cover[data-focus="1"] { outline: none; transform: none; }
+
+.track[data-focus="1"]:not([aria-current="true"]) {
+  background: #241f14;
+  border-radius: 6px;
+  outline: 3px solid var(--glow);
+  outline-offset: -3px;
+}
+.track[data-focus="1"][aria-current="true"] { outline: 3px solid var(--ink); outline-offset: -5px; }

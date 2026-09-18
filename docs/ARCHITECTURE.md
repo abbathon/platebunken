@@ -102,11 +102,29 @@ the code says otherwise. Diarise it.
 
 ## 4. The child's interface
 
+**Keyboard first.** Arrow keys and Enter are the primary input; mouse and touch work
+alongside. The reason is measured rather than aesthetic: tap accuracy on an intended static
+target at ages 4–6 is about **57%**, while a keypress cannot miss. Four arrows map onto a
+grid without reading, and Enter is unambiguous.
+
+```
+← ↑ → ↓   move            Enter   play
++ / −     volume          Esc     back to the crate
+```
+
+In the crate, arrows move the selection and the page follows it — there is no separate
+"page" concept to understand. On the now-playing view, ↑↓ walk the track number line, ←→
+are volume, and Enter plays the focused track. Movement stops silently at the ends: no
+error, nothing happens.
+
+The selected sleeve is unmistakable — it lifts, takes an accent ring, and the rest of the
+crate dims. Subtle focus styling is for people who already know what focus is.
+
 Four verbs, plus two toggles. Nothing else exists.
 
 | Verb | Rendering |
 |---|---|
-| Browse | Tap a cover in the crate |
+| Browse | Arrow keys, or tap a cover in the crate |
 | Play / pause | One large button |
 | Volume | Two large buttons + a row of filled blocks |
 | Skip | One large button, forward only |
@@ -302,8 +320,17 @@ Sendspin web player's reload survival. `research/05` §6.5 lists six such items;
 
 Debian minimal → greetd `[initial_session]` → **cage** → Chromium `--kiosk --app=`.
 
-- The real lock is a **`LIBINPUT_IGNORE_DEVICE="1"` udev rule on the keyboard and trackpad.**
-  Browser flags are cosmetic.
+- **Open question — keyboard-first conflicts with the input lock.** The plan was a
+  `LIBINPUT_IGNORE_DEVICE="1"` udev rule on the keyboard and trackpad, which is the real
+  lock; browser flags are cosmetic. But arrows and Enter are now the primary input, so the
+  keyboard cannot simply be disabled. A laptop keyboard is also ~80 keys of which 6 matter,
+  and several of the rest are escape hatches (Ctrl+Alt+F1, Alt+Tab, Super).
+  - **Preferred: a dedicated USB keypad** — arrows, Enter, volume, and nothing else. The
+    laptop keyboard stays disabled at the udev level, the lock is unchanged, and the child
+    gets a physical object with six keys instead of a computer keyboard.
+  - **Fallback: remap at evdev level** so the built-in keyboard emits only those keycodes.
+    Weaker, since it is software standing between a four-year-old and a TTY.
+- The trackpad rule is unaffected and still applies.
 - `cage` without `-s`: VT switching off by default.
 - `HandleLidSwitch=ignore`, `NAutoVTs=0`, `ReserveVT=0`, sleep targets masked.
 - `Restart=always` **and `StartLimitIntervalSec=0`** — start rate-limiting is on by default and

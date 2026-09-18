@@ -20,13 +20,41 @@ type View = { name: "crate" } | { name: "playing"; album: Album; track: number }
 const state = {
   view: { name: "crate" } as View,
   page: 0,          // A
-  cursor: 0,        // B and C
+  cursor: 0,        // B and C, and the focused album in A
+  focusTrack: 1,    // focused row in the track list
   playing: false,
   volume: 3,        // of 7 blocks
 };
 
+const PER_PAGE = 9;
+const COLS = 3;
+
 const lib = await loadLibrary();
-const ALBUMS = lib.albums;
+
+/**
+ * The crate is the CURATED set, not the library. Default to the seed playlist only —
+ * a library browsed at random contains covers no one approved, which is exactly what the
+ * approval gate exists to prevent. `?all=1` shows everything, for working on the grid.
+ */
+const showAll = new URLSearchParams(location.search).has("all");
+const curated = lib.albums.filter((a) => a.seed);
+const ALBUMS = showAll || curated.length === 0 ? lib.albums : curated;
+
+/**
+ * Warm every sleeve into the browser cache up front, small size first.
+ * The crate must never show a black square: a child navigating with a held-down arrow key
+ * moves faster than the network, and an empty tile is indistinguishable from a broken one.
+ * On the kiosk this becomes a service worker doing the same thing across reboots.
+ */
+function warmCovers(): void {
+  for (const a of ALBUMS) {
+    if (!a.cover) continue;
+    const img = new Image();
+    img.decoding = "async";
+    img.src = a.cover.sm;
+  }
+}
+warmCovers();
 
 const app = document.getElementById("app")!;
 const variant = (): "A" | "B" | "C" =>
@@ -39,7 +67,9 @@ const el = (html: string): HTMLElement => {
 };
 const art = (a: Album, which: "sm" | "lg"): string =>
   a.cover
-    ? `<img src="${a.cover[which]}" alt="" loading="lazy" decoding="async" draggable="false">`
+    // NOT lazy. Holding an arrow key outruns lazy loading and leaves black squares where
+    // sleeves should be. Only nine are on screen and they are already in the warm cache.
+    ? `<img src="${a.cover[which]}" alt="" decoding="async" draggable="false">`
     : coverSvg(a); // no artwork in MA — the gap should be visible, not a broken tile
 
 /**
@@ -65,6 +95,7 @@ function esc(s: string) {
 }
 const play = (album: Album, track = 1) => {
   state.view = { name: "playing", album, track };
+  state.focusTrack = track;
   state.playing = true;
   render();
 };
@@ -72,20 +103,25 @@ const goHome = () => { state.view = { name: "crate" }; render(); };
 
 // ── A · Vegg — 9 covers, tap any one. Position is the index. ─────
 function wall(): HTMLElement {
-  const per = 9, pages = Math.ceil(ALBUMS.length / per);
-  state.page = Math.max(0, Math.min(state.page, pages - 1));
+  const per = PER_PAGE, pages = Math.ceil(ALBUMS.length / per);
+  // The page follows the focused album, so arrow keys flip pages without a separate concept.
+  state.page = Math.floor(state.cursor / per);
   const root = el(`<section class="stage wall"><div class="wall__grid"></div>
     <div class="wall__foot"></div></section>`);
   const grid = root.querySelector(".wall__grid")!;
-  ALBUMS.slice(state.page * per, state.page * per + per).forEach((a) => grid.append(coverEl(a, play)));
+  ALBUMS.slice(state.page * per, state.page * per + per).forEach((a, i) => {
+    const cell = coverEl(a, play);
+    if (state.page * per + i === state.cursor) cell.dataset.focus = "1";
+    grid.append(cell);
+  });
 
   const foot = root.querySelector(".wall__foot")!;
   const prev = el(`<button class="btn btn--lg" aria-label="Forrige side">${ICON.left}</button>`);
   const next = el(`<button class="btn btn--lg" aria-label="Neste side">${ICON.right}</button>`);
   prev.toggleAttribute("disabled", state.page === 0);
   next.toggleAttribute("disabled", state.page >= pages - 1);
-  prev.addEventListener("click", () => { state.page--; render(); });
-  next.addEventListener("click", () => { state.page++; render(); });
+  prev.addEventListener("click", () => { moveCursor(-per); });
+  next.addEventListener("click", () => { moveCursor(per); });
   const pips = el(`<div class="pips">${Array.from({ length: pages },
     (_, i) => `<span class="pip" data-on="${i === state.page ? 1 : 0}"></span>`).join("")}</div>`);
   foot.append(prev, pips, next);
@@ -105,7 +141,9 @@ function stack(): HTMLElement {
     card.style.filter = d ? `brightness(${1 - d * 0.14}) saturate(${1 - d * 0.12})` : "none";
     card.style.zIndex = String(10 - d);
     card.style.pointerEvents = d ? "none" : "auto";
-    card.append(coverEl(a, play));
+    const cell = coverEl(a, play);
+    if (d === 0) cell.dataset.focus = "1";
+    card.append(cell);
     deck.append(card);
   }
   const foot = root.querySelector(".stack__foot")!;
@@ -127,7 +165,9 @@ function shelf(): HTMLElement {
   ALBUMS.forEach((a, i) => {
     const near = Math.min(2, Math.abs(i - state.cursor));
     const slot = el(`<div class="shelf__slot" data-near="${near}" data-focus="${i === state.cursor ? 1 : 0}"></div>`);
-    slot.append(coverEl(a, (al) => (i === state.cursor ? play(al) : (state.cursor = i, render()))));
+    const cell = coverEl(a, (al) => (i === state.cursor ? play(al) : (state.cursor = i, render())));
+    if (i === state.cursor) cell.dataset.focus = "1";
+    slot.append(cell);
     rail.append(slot);
   });
   queueMicrotask(() => {
@@ -160,7 +200,7 @@ function nowPlaying(album: Album, track: number): HTMLElement {
     list.append(el(`<li class="tracks__none">Music Assistant returned no tracks for this album.</li>`));
   }
   album.tracks.forEach((t) => {
-    const row = el(`<li><button class="track" aria-current="${t.n === track}">
+    const row = el(`<li><button class="track" aria-current="${t.n === track}" data-focus="${t.n === state.focusTrack ? 1 : 0}">
       <span class="track__n">${t.n}</span><span class="track__t">${esc(t.title)}</span></button></li>`);
     row.querySelector("button")!.addEventListener("click", () => {
       state.view = { name: "playing", album, track: t.n }; state.playing = true; render();
@@ -190,28 +230,124 @@ function nowPlaying(album: Album, track: number): HTMLElement {
 
 // ── switcher: obviously not part of the design being judged ──────
 const NAMES = { A: "Vegg · the wall", B: "Bunken · the stack", C: "Hylla · the shelf" };
+
+function hopVariant(d: number): void {
+  const keys = ["A", "B", "C"] as const;
+  const i = (keys.indexOf(variant()) + d + keys.length) % keys.length;
+  const u = new URL(location.href);
+  u.searchParams.set("variant", keys[i]);
+  history.replaceState(null, "", u);
+  state.view = { name: "crate" };
+  render();
+}
 function switcher(): HTMLElement {
   const keys = ["A", "B", "C"] as const;
   const cur = variant();
-  const src = lib.source === "live"
-    ? `${ALBUMS.length} albums · ${seedCount(ALBUMS)} curated`
-    : "mock data";
+  const src = lib.source !== "live"
+    ? "mock data"
+    : showAll
+      ? `${ALBUMS.length} albums · WHOLE LIBRARY, not curated`
+      : `${ALBUMS.length} curated`;
   const bar = el(`<div class="switch"><button aria-label="Previous variant">←</button>
     <span>${cur} (${NAMES[cur]}) · ${src}</span><button aria-label="Next variant">→</button></div>`);
-  const hop = (d: number) => {
-    const i = (keys.indexOf(cur) + d + keys.length) % keys.length;
-    const u = new URL(location.href); u.searchParams.set("variant", keys[i]);
-    history.replaceState(null, "", u); state.view = { name: "crate" }; render();
-  };
-  bar.children[0].addEventListener("click", () => hop(-1));
-  bar.children[2].addEventListener("click", () => hop(1));
-  addEventListener("keydown", (e) => {
-    if (/^(INPUT|TEXTAREA)$/.test((e.target as HTMLElement)?.tagName ?? "")) return;
-    if (e.key === "ArrowLeft") hop(-1);
-    if (e.key === "ArrowRight") hop(1);
-  });
+  bar.children[0].addEventListener("click", () => hopVariant(-1));
+  bar.children[2].addEventListener("click", () => hopVariant(1));
   return bar;
 }
+
+// ── keyboard: the primary input ───────────────────────────────────
+//
+// A keypress cannot miss, which matters more here than anywhere else: measured tap
+// accuracy on an intended target at ages 4-6 is about 57%. Four arrows map onto a grid
+// without reading, and Enter is unambiguous. Mouse and touch keep working alongside.
+//
+//   ← ↑ → ↓   move            Enter / Space  play        Esc  back to the crate
+//   + / -     volume          Shift + ← →    switch prototype variant
+
+function clampCursor(n: number): number {
+  return Math.max(0, Math.min(ALBUMS.length - 1, n));
+}
+
+function moveCursor(delta: number): void {
+  const next = clampCursor(state.cursor + delta);
+  if (next === state.cursor) return;   // silent at the ends: no error, nothing happens
+  state.cursor = next;
+  render();
+}
+
+function setVolume(delta: number): void {
+  state.volume = Math.max(0, Math.min(7, state.volume + delta));
+  render();
+}
+
+function onKey(e: KeyboardEvent): void {
+  const tag = (e.target as HTMLElement)?.tagName ?? "";
+  if (/^(INPUT|TEXTAREA)$/.test(tag)) return;
+
+  // Variant switching is prototype chrome, so it gets out of the child's way.
+  if (e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    e.preventDefault();
+    hopVariant(e.key === "ArrowLeft" ? -1 : 1);
+    return;
+  }
+
+  const v = variant();
+  const playing = state.view.name === "playing";
+
+  switch (e.key) {
+    case "ArrowLeft":
+      e.preventDefault();
+      playing ? setVolume(-1) : moveCursor(-1);
+      return;
+    case "ArrowRight":
+      e.preventDefault();
+      playing ? setVolume(1) : moveCursor(1);
+      return;
+    case "ArrowUp":
+      e.preventDefault();
+      if (playing) moveTrack(-1);
+      else moveCursor(v === "A" ? -COLS : -1);
+      return;
+    case "ArrowDown":
+      e.preventDefault();
+      if (playing) moveTrack(1);
+      else moveCursor(v === "A" ? COLS : 1);
+      return;
+    case "Enter":
+    case " ":
+      e.preventDefault();
+      if (playing) {
+        const { album } = state.view as { album: Album };
+        state.view = { name: "playing", album, track: state.focusTrack };
+        state.playing = true;
+      } else {
+        play(ALBUMS[state.cursor]);
+        return;
+      }
+      render();
+      return;
+    case "Escape":
+    case "Backspace":
+      e.preventDefault();
+      if (playing) goHome();
+      return;
+    case "+": case "=":
+      e.preventDefault(); setVolume(1); return;
+    case "-": case "_":
+      e.preventDefault(); setVolume(-1); return;
+  }
+}
+
+function moveTrack(delta: number): void {
+  if (state.view.name !== "playing") return;
+  const n = state.view.album.tracks.length;
+  if (n === 0) return;
+  state.focusTrack = Math.max(1, Math.min(n, state.focusTrack + delta));
+  render();
+  document.querySelector('.track[data-focus="1"]')?.scrollIntoView({ block: "nearest" });
+}
+
+addEventListener("keydown", onKey);
 
 function render() {
   app.replaceChildren();
