@@ -92,8 +92,27 @@ argues for touch at this age, the parent wants mouse as a deliberate skill.
 
 ## Brand Commitments
 
-Name: **Platebunken** (Norwegian, "the record stack"). Earlier working name `metalkid`, retired for
-being genre-specific and age-limited.
+Name: **Platebaren** — Norwegian, "the record bar". Earlier names: `metalkid`, retired for being
+genre-specific and age-limited, then `Platebunken` ("the record stack"), retired in favour of this.
+
+The reference is **Platebaren (Platebaren Feedback), a record shop in Tromsø** — the parent's own
+touchstone for what browsing records feels like. Worth stating plainly, because it is a real
+business and this repo may be made public: the name is borrowed, not licensed. For a private
+appliance in one house that is nobody's problem; if this ever ships to anyone else, or the repo
+goes public under this name, it is the first thing to revisit.
+
+**The mark** (`brand/`) is the crate itself: sleeves packed on a shelf with one pulled out and
+tipped forward mid-flip. It is a pun and a description at once — *baren* is the bar, and these are
+bars — and the tipped sleeve is the flip the whole product imitates. Monochrome, `currentColor`,
+so it takes whatever theme it lands in.
+
+It was drawn after looking at the Feedback podcast's artwork, which is what the shop's own logo
+could not be found. What was taken from it is direction — a record-shop mark is monochrome, bold,
+and survives being small — and nothing else. A near-copy of someone else's mark is not a brand.
+
+**The logo never appears in the child's interface.** There is no splash, no boot screen and no
+branding on any surface he touches. It lives on the browser tab, the parent's admin app and the
+repo.
 
 The household listens to metal and Norwegian hip-hop. Album art is the interface, so the product's
 visual world must not compete with the covers it displays.
@@ -108,8 +127,9 @@ with unverifiable items explicitly marked UNVERIFIED. They cover Music Assistant
 Sonos control, prior art and Linux kiosk lockdown, discovery APIs and content filtering, early-years
 pedagogy, and the local audio path.
 
-There is **no existing UI, no logo, no brand assets, and no incumbent visual world.** There are no
-users yet, no usage data, no testimonials. Nothing may be fabricated in place of these.
+There is **no incumbent visual world** beyond what this project has drawn for itself: the mark in
+`brand/`, and the three themes in `src/theme/`. There are no users yet, no usage data and no
+testimonials. Nothing may be fabricated in place of these.
 
 ## Product Principles
 

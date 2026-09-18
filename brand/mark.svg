@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Platebaren">
+  <!--
+    The crate: sleeves packed on a shelf, and one pulled out and tipped forward mid-flip.
+
+    A pun and a description at once. "Baren" is the bar, and these are bars; the tipped sleeve
+    is the flip the whole product imitates, and it is also what stops the mark reading as a
+    chart. Three uprights rather than five, because anything finer turns to mush in a browser
+    tab, and the tipped one sits clear of the stack so the silhouette survives at 32px.
+
+    Monochrome and `currentColor` throughout, so it takes whatever theme it lands in.
+  -->
+  <g fill="currentColor">
+    <rect x="4" y="50" width="56" height="5" rx="1.5"/>
+    <rect x="8"  y="14" width="9" height="36" rx="2"/>
+    <rect x="20" y="14" width="9" height="36" rx="2"/>
+    <rect x="32" y="14" width="9" height="36" rx="2"/>
+    <rect x="42" y="10" width="9" height="40" rx="2" transform="rotate(14 46.5 50)"/>
+  </g>
+</svg>

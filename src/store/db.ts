@@ -8,7 +8,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { MIGRATIONS } from "./schema.ts";
 
-export const DEFAULT_DB_PATH = "./data/platebunken.sqlite";
+export const DEFAULT_DB_PATH = "./data/platebaren.sqlite";
 
 /**
  * Open the store and bring it up to the current schema. Safe to call repeatedly.

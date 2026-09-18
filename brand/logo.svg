@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64" role="img" aria-label="Platebaren">
+  <!--
+    Horizontal lockup: mark, then wordmark.
+
+    The wordmark is live text in Archivo rather than outlines, so it stays editable and this
+    file stays small. Anything that renders it without Archivo available — a kiosk with no WAN,
+    a README on a machine that has never seen the font — gets the system sans and a slightly
+    different logo. If that ever matters, convert this one file to paths; do not start
+    self-hosting a font for a mark that appears on two surfaces.
+  -->
+  <g fill="currentColor">
+    <rect x="4" y="50" width="56" height="5" rx="1.5"/>
+    <rect x="8"  y="14" width="9" height="36" rx="2"/>
+    <rect x="20" y="14" width="9" height="36" rx="2"/>
+    <rect x="32" y="14" width="9" height="36" rx="2"/>
+    <rect x="42" y="10" width="9" height="40" rx="2" transform="rotate(14 46.5 50)"/>
+  </g>
+  <text x="78" y="45" fill="currentColor"
+        font-family="Archivo, 'Helvetica Neue', Arial, sans-serif"
+        font-size="34" font-weight="800" letter-spacing="-0.5">PLATEBAREN</text>
+</svg>

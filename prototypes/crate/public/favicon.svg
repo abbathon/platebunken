@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Platebaren">
+  <!--
+    The app mark on its own field. Colours are baked rather than `currentColor`: a favicon is
+    rendered outside the page and inherits nothing from it. Amber on near-black, because it has
+    to hold up against a light tab strip and a dark one, and the alternative is a mark that
+    disappears in whichever theme the browser happens to be wearing.
+  -->
+  <rect width="64" height="64" rx="14" fill="#ffb84d"/>
+  <g fill="#0a0a0c" transform="translate(6.4 6.4) scale(0.8)">
+    <rect x="4" y="50" width="56" height="5" rx="1.5"/>
+    <rect x="8"  y="14" width="9" height="36" rx="2"/>
+    <rect x="20" y="14" width="9" height="36" rx="2"/>
+    <rect x="32" y="14" width="9" height="36" rx="2"/>
+    <rect x="42" y="10" width="9" height="40" rx="2" transform="rotate(14 46.5 50)"/>
+  </g>
+</svg>
