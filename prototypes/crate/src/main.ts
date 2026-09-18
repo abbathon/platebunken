@@ -42,8 +42,20 @@ const art = (a: Album, which: "sm" | "lg"): string =>
     ? `<img src="${a.cover[which]}" alt="" loading="lazy" decoding="async" draggable="false">`
     : coverSvg(a); // no artwork in MA — the gap should be visible, not a broken tile
 
+/**
+ * A cover whose image fails to load falls back to the procedural one rather than leaving a
+ * blank tile. The kiosk has no WAN and MA can be mid-restart; a hole in the crate is worse
+ * than a plain sleeve, because a hole is not tappable and the child cannot report a bug.
+ */
+function withImageFallback(host: HTMLElement, a: Album): void {
+  const img = host.querySelector("img");
+  if (!img) return;
+  img.addEventListener("error", () => { host.innerHTML = coverSvg(a); host.dataset.artFailed = "1"; }, { once: true });
+}
+
 const coverEl = (a: Album, onPlay: (a: Album) => void, which: "sm" | "lg" = "sm"): HTMLElement => {
   const b = el(`<button class="cover" aria-label="${esc(a.artist)} – ${esc(a.title)}">${art(a, which)}</button>`);
+  withImageFallback(b, a);
   b.addEventListener("click", () => onPlay(a));
   return b;
 };
@@ -131,7 +143,7 @@ function shelf(): HTMLElement {
 // ── now playing — shared by all three ────────────────────────────
 function nowPlaying(album: Album, track: number): HTMLElement {
   const root = el(`<section class="stage np">
-    <div class="np__art"><div class="cover" style="cursor:default">${art(album, "lg")}</div></div>
+    <div class="np__art"><div class="cover" id="np-art" style="cursor:default">${art(album, "lg")}</div></div>
     <div class="np__side">
       <div>
         <h1 class="np__artist">${esc(album.artist.toUpperCase())}</h1>
@@ -140,6 +152,8 @@ function nowPlaying(album: Album, track: number): HTMLElement {
       <ol class="tracks"></ol>
       <div class="transport"></div>
     </div></section>`);
+
+  withImageFallback(root.querySelector("#np-art") as HTMLElement, album);
 
   const list = root.querySelector(".tracks")!;
   if (album.tracks.length === 0) {
