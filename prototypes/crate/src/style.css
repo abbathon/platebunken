@@ -1,0 +1,159 @@
+/* PROTOTYPE styles. Dark by use-scene: this lives in a bedroom, often at night,
+   and album art is the only thing that should carry colour. */
+:root {
+  --ink:        #f4f1ea;
+  --ink-dim:    #a49e93;
+  --bg:         #0a0a0c;
+  --bg-raised:  #141317;
+  --bg-sunk:    #050506;
+  --edge:       #2a2830;
+  --glow:       #ffb84d;   /* tube-amber: the only accent */
+  --glow-deep:  #7a4a06;
+  --target:     76px;      /* NN/g children's floor. Never go below this. */
+  --flip: 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: Archivo, system-ui, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--glow); color: #17120a; }
+:focus-visible { outline: 3px solid var(--glow); outline-offset: 3px; border-radius: 4px; }
+
+/* No text selection or callouts anywhere the child touches. */
+#app { user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+
+#app { height: 100%; display: grid; }
+
+/* ── the cover itself ─────────────────────────────────────────── */
+.cover {
+  position: relative; display: block; width: 100%; aspect-ratio: 1;
+  border: 0; padding: 0; background: var(--bg-sunk);
+  border-radius: 3px; overflow: hidden; cursor: pointer;
+  box-shadow: 0 2px 4px rgb(0 0 0 / 0.5), 0 14px 32px -12px rgb(0 0 0 / 0.8);
+  transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 160ms;
+}
+.cover svg { display: block; width: 100%; height: 100%; }
+.cover::after { /* the sleeve's lit edge — depth, not decoration */
+  content: ""; position: absolute; inset: 0; border-radius: 3px;
+  box-shadow: inset 1px 1px 0 rgb(255 255 255 / 0.10), inset -1px -1px 0 rgb(0 0 0 / 0.5);
+  pointer-events: none;
+}
+@media (hover: hover) {
+  .cover:hover { transform: translateY(-6px) scale(1.015); box-shadow: 0 4px 8px rgb(0 0 0 / 0.5), 0 26px 50px -14px rgb(0 0 0 / 0.9); }
+}
+.cover:active { transform: translateY(-1px) scale(0.985); }
+
+/* ── controls ─────────────────────────────────────────────────── */
+.btn {
+  display: grid; place-items: center;
+  min-width: var(--target); min-height: var(--target);
+  border: 1px solid var(--edge); border-radius: 999px;
+  background: var(--bg-raised); color: var(--ink);
+  cursor: pointer; transition: background 140ms, transform 140ms, border-color 140ms;
+}
+.btn svg { width: 34px; height: 34px; fill: currentColor; }
+.btn:active { transform: scale(0.94); }
+@media (hover: hover) { .btn:hover { background: #1e1c23; border-color: #443f4e; } }
+.btn--lg { min-width: 108px; min-height: 108px; }
+.btn--lg svg { width: 48px; height: 48px; }
+.btn--play { background: var(--glow); color: #17120a; border-color: transparent; }
+@media (hover: hover) { .btn--play:hover { background: #ffc76e; } }
+.btn[disabled] { opacity: 0.28; pointer-events: none; }
+
+/* Edge dead-zones: children press with the whole finger pad, often at an angle. */
+.stage { padding: 28px clamp(28px, 4vw, 56px); height: 100%; display: grid; gap: 22px; }
+
+/* ── A · Vegg ─────────────────────────────────────────────────── */
+.wall { grid-template-rows: 1fr auto; }
+/* Tile is bounded on BOTH axes: never wider than a third of the page, never taller
+   than a third of what's left once the flip row and gutters are taken out. */
+.wall__grid {
+  --tile: min(26vw, (100vh - 240px) / 3);
+  display: grid; grid-template-columns: repeat(3, var(--tile));
+  gap: clamp(12px, 1.6vw, 24px); align-content: center; justify-content: center;
+}
+.wall__foot { display: flex; justify-content: space-between; align-items: center; }
+.pips { display: flex; gap: 10px; }
+.pip { width: 14px; height: 14px; border-radius: 999px; background: var(--edge); }
+.pip[data-on="1"] { background: var(--glow); }
+
+/* ── B · Bunken ───────────────────────────────────────────────── */
+.stack { place-items: center; grid-template-rows: 1fr auto; }
+.stack__deck { position: relative; width: min(46vh, 70vw); aspect-ratio: 1; margin-top: 12vh; }
+.stack__card {
+  position: absolute; inset: 0; transform-origin: 50% 100%;
+  transition: transform var(--flip), opacity var(--flip), filter var(--flip);
+}
+.stack__foot { display: flex; gap: clamp(20px, 4vw, 60px); align-items: center; }
+
+/* ── C · Hylla ────────────────────────────────────────────────── */
+.shelf { grid-template-rows: 1fr auto; align-content: center; }
+.shelf__rail {
+  display: flex; gap: clamp(18px, 3vw, 44px); align-items: center;
+  overflow-x: auto; overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory; scrollbar-width: none;
+  padding-inline: calc(50% - min(24vh, 36vw));
+}
+.shelf__rail::-webkit-scrollbar { display: none; }
+.shelf__slot { flex: 0 0 auto; width: min(48vh, 72vw); scroll-snap-align: center; transition: width var(--flip); }
+.shelf__slot[data-near="1"] { width: min(30vh, 44vw); }
+.shelf__slot[data-near="2"] { width: min(21vh, 30vw); }
+.shelf__slot .cover { filter: saturate(0.5) brightness(0.55); transition: filter var(--flip); }
+.shelf__slot[data-focus="1"] .cover { filter: none; }
+.shelf__foot { display: flex; justify-content: center; }
+
+/* ── now playing ──────────────────────────────────────────────── */
+.np { grid-template-columns: minmax(0, 1fr) minmax(320px, 0.85fr); gap: clamp(28px, 4vw, 64px); align-items: center; }
+.np__art { width: 100%; max-width: min(64vh, 100%); justify-self: center; }
+.np__side { display: grid; gap: 20px; align-content: center; min-height: 0; }
+.np__artist { font-size: clamp(28px, 4.2vw, 56px); font-weight: 800; letter-spacing: -0.03em; line-height: 0.96; margin: 0; }
+.np__album { color: var(--ink-dim); font-size: 17px; margin: 0; }
+
+/* The track list is a NUMBER LINE: one straight, evenly spaced column.
+   Geometry carries the pedagogic effect, not the numerals. Never a wheel or grid. */
+.tracks { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 42vh; scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
+.track {
+  display: grid; grid-template-columns: 78px 1fr; align-items: center;
+  gap: 16px; min-height: 96px; width: 100%;
+  background: none; border: 0; border-bottom: 1px solid #1b1a20; color: inherit;
+  text-align: left; cursor: pointer; padding: 0 12px;
+}
+.track__n {
+  font-size: 64px; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.04em;
+  color: var(--ink-dim); text-align: right;
+}
+.track__t { font-size: 18px; color: #948d83; }  /* 6.1:1 — was failing at 3.8:1 */
+.track[aria-current="true"] { background: var(--glow); border-radius: 6px; border-bottom-color: transparent; }
+.track[aria-current="true"] .track__n { color: #17120a; }
+.track[aria-current="true"] .track__t { color: #4a3a12; }
+@media (hover: hover) { .track:hover:not([aria-current="true"]) { background: #141317; border-radius: 6px; } }
+
+.transport { display: flex; gap: 18px; align-items: center; }
+.vol { display: flex; gap: 14px; align-items: center; }
+.vol__blocks { display: flex; gap: 7px; }
+.vol__b { width: 22px; height: 46px; border-radius: 3px; background: #201e26; }
+.vol__b[data-on="1"] { background: var(--glow); }
+
+/* ── home ─────────────────────────────────────────────────────── */
+.home { position: fixed; left: 22px; bottom: 22px; z-index: 40; }
+
+/* ── prototype switcher — deliberately not part of the design ──── */
+.switch {
+  position: fixed; right: 16px; top: 16px; z-index: 100;
+  display: flex; align-items: center; gap: 4px;
+  background: #fff; color: #111; border-radius: 999px; padding: 4px;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.4), 0 12px 28px -8px rgb(0 0 0 / 0.7);
+  font: 600 13px/1 Archivo, sans-serif;
+}
+.switch button { min-width: 34px; height: 34px; border: 0; border-radius: 999px; background: #eee; cursor: pointer; font: inherit; }
+.switch button:hover { background: #ddd; }
+.switch span { padding: 0 12px; }
