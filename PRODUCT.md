@@ -72,9 +72,15 @@ by an algorithm. Discovery is real, and the fence is a person.
 
 ## Capabilities and Constraints
 
-**The child's verbs, complete:** browse, play/pause, volume, skip forward. Plus shuffle and repeat
-as toggles on the now-playing view only. Nothing else exists — no delete, no settings, no queue
-editing, no search, no track-back.
+**The child's verbs, complete:** browse, play/pause, volume, skip forward, and switch theme. Plus
+shuffle and repeat as toggles on the now-playing view only. Nothing else is reachable by him — no
+delete, no queue editing, no search, no track-back.
+
+**Settings exist on the device, behind a gate he cannot pass.** The parent asked for them there,
+and they are the parent's surface rather than a fifth verb: a keypad stands in front of them, and
+everything behind it belongs to the parent. Its entry point is deliberately the one control in
+the product drawn *below* the 76 px floor — that floor exists so he can hit what he needs, and
+this is the one thing he must not hit.
 
 **Hard interaction constraints:**
 - Minimum **76 px** (≈2 cm) for every control — NN/g children's guidance, nearly double WCAG AAA.
@@ -114,9 +120,10 @@ The shop's own logo could not be found, so the drawing was made after looking at
 podcast's artwork. What was taken from it is direction — a record-shop mark is monochrome, bold,
 and survives being small — and nothing else. A near-copy of someone else's mark is not a brand.
 
-**The logo never appears in the child's interface.** There is no splash, no boot screen and no
-branding on any surface he touches. It lives on the browser tab, the parent's admin app and the
-repo.
+**The mark sits small at the top of the child's screens**, with the way in to settings beside it.
+This reverses an earlier rule here — that the logo never appeared on any surface he touches — at
+the parent's decision. What the rule was protecting still holds: no splash, no boot screen, no
+branding that delays or interrupts him.
 
 The household listens to metal and Norwegian hip-hop. Album art is the interface, so the product's
 visual world must not compete with the covers it displays.

@@ -119,7 +119,7 @@ export const MOTIF_MOTION = ["drift", "drift--slow", "drift--slower", "bob", "tw
 /** See Motif.driftMs. Derived and deliberately unhurried, like TRACER_FLOOR_MS. */
 export const MOTIF_DRIFT_FLOOR_MS = 6000;
 
-/** The shape of a chrome button's plate. Decorative only: see §4.6 on why it never clips
+/** The shape of a chrome button's plate. Decorative only: see §4.7 on why it never clips
  *  the button itself, which stays a full 76px box whatever shape is painted on it. */
 export type Plate = "round" | "shield" | "hex";
 

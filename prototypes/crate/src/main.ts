@@ -7,6 +7,8 @@
 import { loadLibrary, seedCount, type Album } from "./library";
 import { coverSvg } from "./cover";
 import { THEMES, applyTheme, frameEl, setEntryDirection, themeFromUrl, themePicker, type Theme } from "./theme";
+import { DEFAULT_SETTINGS, adminView, type Settings } from "./admin";
+import { numeralFace, numeralVars } from "../../../src/theme/fonts.ts";
 
 // ── icons: drawn, one weight, never glyphs or emoji ──────────────
 const ICON = {
@@ -16,6 +18,10 @@ const ICON = {
   left:  `<svg viewBox="0 0 24 24"><path d="M15.2 3.8 7 12l8.2 8.2 1.6-1.6L10.2 12l6.6-6.6z"/></svg>`,
   right: `<svg viewBox="0 0 24 24"><path d="m8.8 3.8 8.2 8.2-8.2 8.2-1.6-1.6L13.8 12 7.2 5.4z"/></svg>`,
   home:  `<svg viewBox="0 0 24 24"><path d="M4 9.5 12 3l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>`,
+  menu:  `<svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zM4 11h16v2H4zM4 16h16v2H4z"/></svg>`,
+  // The mark, small. brand/mark.svg is the source; this is its geometry inlined so the page
+  // needs no asset and the mark takes the theme's colour.
+  logo:  `<svg viewBox="0 0 64 64" aria-hidden="true"><g fill="currentColor"><rect x="3" y="50" width="58" height="4.5" rx="1.5"/><rect x="5" y="17" width="3.5" height="33" rx="1"/><rect x="10.5" y="17" width="3.5" height="33" rx="1"/><rect x="16" y="17" width="3.5" height="33" rx="1"/><rect x="21.5" y="17" width="3.5" height="33" rx="1"/><rect x="27" y="17" width="3.5" height="33" rx="1"/><path fill-rule="evenodd" transform="rotate(-6 34 50)" d="M34 23h27v27H34z M47.5 29.9a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2z"/></g></svg>`,
   minus: `<svg viewBox="0 0 24 24"><path d="M5 11h14v2H5z"/></svg>`,
   // Shelf marks. Learned by position first and shape second, never by name.
   crate: `<svg viewBox="0 0 24 24"><path d="M3 5h3v14H3zM8 5h3v14H8zM13 5h3v14h-3zM18.2 5.6l2.6.8-3.9 12.6-2.6-.8z"/></svg>`,
@@ -30,7 +36,7 @@ const ICON = {
 // `now` is what is PLAYING. `view` is what is ON SCREEN. They were one thing, which meant the
 // crate had no way to know a record was running and could not mark the sleeve it came from —
 // and a four-year-old who walks away and comes back does not hold that in his head.
-type View = { name: "crate" } | { name: "playing" };
+type View = { name: "crate" } | { name: "playing" } | { name: "admin" };
 type Shelf = "crate" | "new" | "recent" | "played";
 
 const state = {
@@ -57,6 +63,8 @@ const state = {
   from: { x: 0, y: 0 },
   lastPage: 0,      // the page the crate was showing on the previous render
   lastFlipAt: 0,    // timestamp of the last page flip, to tell a deliberate flip from a scrub
+  settings: { ...DEFAULT_SETTINGS } as Settings,
+  admin: { unlocked: false, tab: "sound" },
 };
 
 const PER_PAGE = 9;
@@ -96,6 +104,21 @@ warmCovers();
 // That is what makes it safe to hand him the switch.
 let THEME = themeFromUrl();
 applyTheme(THEME);
+
+/**
+ * The numeral face, applied as custom properties the track list reads.
+ *
+ * `?font=` is here so the two can be flipped in front of the child in seconds; the parent's
+ * real control is in settings, under Appearance. Production self-hosts whichever wins — the
+ * kiosk has no WAN and the webfont link in index.html is a prototype-only shortcut.
+ */
+function applyNumeralFace(id: string): void {
+  for (const [k, v] of Object.entries(numeralVars(numeralFace(id)))) {
+    document.documentElement.style.setProperty(k, v);
+  }
+}
+state.settings.numeralFace = numeralFace(new URLSearchParams(location.search).get("font")).id;
+applyNumeralFace(state.settings.numeralFace);
 
 function setTheme(t: Theme): void {
   if (t.id === THEME.id) return;
@@ -263,6 +286,32 @@ function caption(a: Album | undefined): HTMLElement {
   bar.append(el(`<span class="caption__title">${esc(a.title)}</span>`));
   if (a.year) bar.append(el(`<span class="caption__year">${a.year}</span>`));
   return bar;
+}
+
+/**
+ * The top bar: the mark, and the way in to the parent's settings.
+ *
+ * PRODUCT.md said the logo never appears in the child's interface — no splash, no boot screen,
+ * no branding on any surface he touches. The parent overruled that, so it is here and the rule
+ * is rewritten rather than left contradicting the code.
+ *
+ * The menu button is deliberately BELOW the 76px floor, at 44. That floor exists so the child
+ * can hit the controls he needs; this is the one control he must not hit, and the same logic
+ * that sets a minimum for the others sets a maximum for this. A stray press still costs
+ * nothing — it opens a keypad he cannot pass, with the home target he already knows sitting in
+ * its usual corner, and an idle return behind that.
+ */
+function topbar(): HTMLElement {
+  const bar = el(`<div class="topbar"><span class="topbar__logo">${ICON.logo}</span>
+    <button class="topbar__menu" aria-label="Innstillinger / Settings">${ICON.menu}</button></div>`);
+  bar.querySelector(".topbar__menu")!.addEventListener("click", openAdmin);
+  return bar;
+}
+
+function openAdmin(): void {
+  state.admin = { unlocked: false, tab: state.admin.tab };
+  state.view = { name: "admin" };
+  render();
 }
 
 /** Mark a slot selected and tell its frame which way the hand just moved. */
@@ -618,6 +667,14 @@ function onKey(e: KeyboardEvent): void {
       return;
   }
 
+  // Settings takes no other key: its own controls are the only way through it, and the arrow
+  // keys must not steer the crate underneath a screen the child cannot read.
+  if (state.view.name === "admin") {
+    if (/^[0-9]$/.test(e.key)) return;
+    e.preventDefault();
+    return;
+  }
+
   // Volume, across layouts. On a Norwegian keyboard "+" and "-" are both unshifted keys,
   // so e.key matches directly; NumpadAdd/Subtract and the media keys cover a keypad and
   // anything with dedicated volume buttons. Whichever the final hardware has, it works.
@@ -642,7 +699,24 @@ function render() {
   app.replaceChildren();
   const now = state.now;
 
-  if (state.view.name === "playing" && now) {
+  if (state.view.name === "admin") {
+    app.append(adminView({
+      settings: state.settings,
+      unlocked: state.admin.unlocked,
+      tab: state.admin.tab,
+      themes: THEMES,
+      onUnlock: (ok) => { if (ok) { state.admin.unlocked = true; render(); } },
+      onTab: (tab) => { state.admin.tab = tab; render(); },
+      onClose: goHome,
+      onChange: (patch) => {
+        state.settings = { ...state.settings, ...patch };
+        if (patch.theme) setTheme(THEMES.find((t) => t.id === patch.theme) ?? THEME);
+        if (patch.numeralFace) applyNumeralFace(patch.numeralFace);
+        if (patch.volumeCeiling !== undefined) state.volume = Math.min(state.volume, VOL_STEPS);
+        render();
+      },
+    }));
+  } else if (state.view.name === "playing" && now) {
     app.append(nowPlaying(now.album, now.track));
   } else {
     app.append(wall());
@@ -658,16 +732,23 @@ function render() {
    * live in the edge dead zones of §4.5, which is where controls belong when a stray palm
    * press on them costs nothing — and neither of these can destroy anything.
    */
-  const left = el(`<div class="rail rail--left"></div>`);
-  left.append(themePicker(THEME, setTheme), volume());
-  app.append(left, shelfRail());
+  // The bar is on the child's screens only: settings has its own header and its own way out.
+  if (state.view.name !== "admin") {
+    app.append(topbar());
+    const left = el(`<div class="rail rail--left"></div>`);
+    left.append(themePicker(THEME, setTheme), volume());
+    app.append(left, shelfRail());
+  }
 
-  if (state.view.name !== "crate") {
+  // Settings has its own close, in its own header, and Esc. The child's home target would be a
+  // third way out of a screen he should not be on, sitting on top of the footnote.
+  if (state.view.name === "playing") {
     const home = el(`<button class="btn home" aria-label="Tilbake til bunken">${ICON.home}</button>`);
     home.addEventListener("click", goHome);
     app.append(home);
   }
 
-  app.append(switcher());
+  // Prototype chrome, and settings is a parent surface: it would sit on the close button.
+  if (state.view.name !== "admin") app.append(switcher());
 }
 render();

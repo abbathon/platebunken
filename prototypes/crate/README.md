@@ -28,6 +28,20 @@ Run: `npm run prototype`.
 + / −     volume          Esc    back to the crate      *  next theme
 ```
 
+## Settings
+
+The mark sits at the top centre with a menu button beside it; the code is **1234**. That is a
+child gate and not security — four digits in front-end JavaScript stops a four-year-old and
+nobody else, and the page holds no credential for anything.
+
+Sound, Sources, Shelves, Appearance and Language, in Norwegian or English. Nothing persists: on
+the kiosk each of these lands in `.env`, the store, or Home Assistant.
+
+**Appearance is where the numeral face lives.** The track list is 64 px numerals a child is
+learning to read, and it is the one place in his interface where the typeface does real work.
+`?font=archivo|andika|lexend` switches it too, so both can be put in front of him in seconds.
+Production must self-host whichever wins.
+
 ## Data
 
 ```
@@ -56,7 +70,7 @@ gaps in the library stay visible. In a cover-art interface an untagged album is 
 `?theme=natt|vikingtid|romfart`, the three discs on the left rail, or `*`. Each theme is an
 emblem, a backdrop and a plate shape as well as a palette — chrome only, never the artwork. They
 live in `src/theme/themes.ts`, which is pure data and outlives this prototype. ARCHITECTURE.md
-§4.6 says what a theme is not allowed to do.
+§4.7 says what a theme is not allowed to do.
 
 The backdrop moves: waves drift at three speeds with a ship riding them, stars twinkle out of
 phase. `prefers-reduced-motion` stops all of it, and the backdrop carries no information, so

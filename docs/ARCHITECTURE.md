@@ -209,7 +209,14 @@ The track list, rendered as a number line — the best-evidenced pedagogic featu
   grid: the linear geometry carries the measured effect, not the numerals.
 - Rows **≥ 96 px** tall, full width (above the 76 px floor, because adjacent rows mean a miss lands
   on a neighbour).
-- Numeral **left**, ≥ 64 px, plain high-contrast sans, **tabular figures** so the column reads straight.
+- Numeral **left**, ≥ 64 px, plain high-contrast sans, **tabular figures** so the column reads
+  straight. **The face is chosen against this job and nothing else** (`src/theme/fonts.ts`): it is
+  the only place in his interface where typography does real work, and Archivo — which arrived
+  with the first prototype and was never argued for — has condensed digits and a `1` lighter than
+  every other numeral, which in a number line makes the first numeral he meets read as a divider.
+  Andika (SIL, drawn for beginning readers) and Lexend are the candidates. Switchable in settings
+  and with `?font=`, so the answer comes from watching him rather than from judgement. **Production
+  must self-host the winner** — the kiosk has no WAN.
 - **True track numbers, 1…n.** No truncation, no renumbering. Accuracy is what makes it learnable.
 - Track title small and dim to the right — for the parent, ignorable by the child, non-functional.
 - Tapping a row plays from that track. This is *play* aimed at a smaller object, not a new verb.
@@ -263,7 +270,33 @@ inactivity. **No back button** — "back" is a stack concept and he does not hav
   he holds, and a confirmation dialog is useless to someone who cannot read it.
 - **No boot, no splash, no loading state, no empty state.** Instant time-to-music.
 
-### 4.6 Themes
+### 4.6 The top bar, and settings on the device
+
+The mark sits small and centred at the top of the child's screens, with a menu button beside it.
+An earlier version of this document said the logo never appeared on any surface he touches; the
+parent reversed that. What that rule protected still holds — no splash, no boot screen, nothing
+that delays him.
+
+**The menu button is deliberately below the 76 px floor**, at 44. That floor exists so the child
+can hit the controls he needs; this is the one control he must not hit, and the same reasoning
+that sets a minimum for the others sets a maximum for this one. A stray press still costs
+nothing: it opens a keypad he cannot pass, and Esc, the close target and an idle return all lead
+back out.
+
+**The gate is a child gate, not security.** Four digits compared in front-end JavaScript stops a
+four-year-old and nobody else. The real boundary is unchanged and elsewhere: the kiosk lockdown
+(§8), and the fact that no credential for Music Assistant, Qobuz or the store is ever in the
+page. Nothing should grow behind this gate that anyone is asked to trust it with.
+
+**Settings are the one surface in the product made of text**, which makes them the surface
+PRODUCT.md's Norwegian-and-English commitment is actually about. Sound (volume ceiling, starting
+volume, output path), Sources (which suggestion sources feed the queue, charts among them),
+Shelves (the new-shelf trickle), Appearance (default theme, numeral face) and Language. On the
+kiosk each of these lands in `.env`, the store, or an MQTT topic Home Assistant owns — never in
+the page. The review queue itself stays on the phone (§6): it is a ten-second-a-day job done
+somewhere else, not something to stand in a bedroom doing.
+
+### 4.7 Themes
 
 A four-year-old who is currently deep into vikings should be able to have a viking record
 player. `src/theme/themes.ts` holds the themes as pure data; the prototype renders them.

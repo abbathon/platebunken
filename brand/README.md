@@ -23,9 +23,9 @@ outlives it, which is the right way round.
 
 ## Rules
 
-- **The logo never appears in the child's interface.** There is no splash, no boot screen and no
-  branding on any surface he touches — PRODUCT.md rules out all three. It lives on the browser
-  tab, the parent's admin app, and the repo.
+- **The mark sits small at the top of the child's screens**, beside the way in to settings. An
+  earlier rule here said it never appeared on any surface he touches; the parent reversed that.
+  What it protected still holds: no splash, no boot screen, nothing that delays him.
 - `mark.svg` and `logo.svg` are `currentColor` and must stay that way. `favicon.svg` is the one
   that bakes colour, and it bakes amber on near-black so it holds against a light tab strip and a
   dark one alike.

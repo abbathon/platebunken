@@ -29,6 +29,8 @@
   --frame-settle: 150ms;
 
   --target:     76px;      /* NN/g children's floor. Never go below this. */
+  --numeral-font: Archivo, 'Helvetica Neue', Arial, sans-serif;
+  --numeral-weight: 800;
   --flip: 420ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -216,7 +218,10 @@ html, body {
   text-align: left; cursor: pointer; padding: 0 12px;
 }
 .track__n {
-  font-size: 64px; font-weight: 800; line-height: 1;
+  /* The one place in his interface where the typeface does real work. Set in src/theme/fonts.ts,
+     chosen against this job and nothing else — see ARCHITECTURE.md §4.2. */
+  font-family: var(--numeral-font);
+  font-size: 64px; font-weight: var(--numeral-weight); line-height: 1;
   font-variant-numeric: tabular-nums; letter-spacing: -0.04em;
   color: var(--ink-dim); text-align: right;
 }
@@ -319,6 +324,78 @@ html, body {
 .caption__artist { font-weight: 800; color: var(--ink-dim); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .caption__title  { color: color-mix(in oklab, var(--ink-dim) 74%, var(--bg)); flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
 .caption__year   { color: color-mix(in oklab, var(--ink-dim) 55%, var(--bg)); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+
+/* ── the top bar ──────────────────────────────────────────────────
+   The mark, and the way in to settings. The menu button is deliberately BELOW the 76px floor:
+   that floor exists so the child can hit the controls he needs, and this is the one control he
+   must not hit. The same logic that sets a minimum for the others sets a maximum for this. */
+.topbar {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 45;
+  display: flex; align-items: center; gap: 12px;
+}
+.topbar__logo { display: block; width: 34px; height: 34px; color: var(--glow); opacity: 0.85; }
+.topbar__logo svg { display: block; width: 100%; height: 100%; }
+.topbar__menu {
+  width: 44px; height: 44px; display: grid; place-items: center;
+  border: 0; border-radius: 10px; padding: 0; cursor: pointer;
+  background: none; color: var(--ink-dim); opacity: 0.5;
+  transition: opacity 140ms, background 140ms;
+}
+.topbar__menu svg { width: 22px; height: 22px; fill: currentColor; }
+@media (hover: hover) { .topbar__menu:hover { opacity: 1; background: var(--bg-raised); } }
+
+/* ── settings — the parent's surface, and the only one made of text ── */
+.admin { padding: 30px clamp(28px, 4vw, 56px); grid-template-rows: auto minmax(0, 1fr) auto; gap: 20px; }
+.admin__head { display: flex; align-items: center; justify-content: space-between; }
+.admin__title { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; }
+.admin__close { min-width: 52px; min-height: 52px; font-size: 20px; color: var(--ink-dim); }
+.admin__body { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 32px; min-height: 0; }
+.admin__tabs { display: flex; flex-direction: column; gap: 6px; }
+.admin__tab {
+  text-align: left; padding: 13px 15px; border: 0; border-radius: 9px; cursor: pointer;
+  background: none; color: var(--ink-dim); font: 600 15px/1.2 inherit;
+}
+.admin__tab[data-on="1"] { background: var(--bg-raised); color: var(--ink); }
+@media (hover: hover) { .admin__tab:hover { color: var(--ink); } }
+.admin__pane { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 8px; }
+.admin__foot { margin: 0; font-size: 13px; color: var(--ink-dim); opacity: 0.75; }
+
+.set { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 26px; align-items: start; padding: 20px 0; border-bottom: 1px solid var(--edge); }
+.set__label { font-size: 16px; font-weight: 600; }
+.set__help { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink-dim); max-width: 46ch; }
+.set__control { display: flex; align-items: center; }
+
+.chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.chip {
+  padding: 11px 15px; border: 1px solid var(--edge); border-radius: 999px; cursor: pointer;
+  background: none; color: var(--ink-dim); font: 600 14px/1 inherit; white-space: nowrap;
+}
+.chip[data-on="1"] { background: var(--glow); border-color: transparent; color: var(--on-glow); }
+@media (hover: hover) { .chip:not([data-on="1"]):hover { color: var(--ink); border-color: var(--ink-dim); } }
+
+.slider { display: flex; align-items: center; gap: 14px; }
+.slider input { width: 220px; accent-color: var(--glow); }
+.slider output { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 3ch; text-align: right; }
+
+.numeral-preview { padding: 22px 0 4px; }
+.numeral-preview__digits {
+  font-family: var(--numeral-font); font-weight: var(--numeral-weight);
+  font-size: 64px; font-variant-numeric: tabular-nums; letter-spacing: -0.04em; line-height: 1.1;
+}
+.numeral-preview__note { margin: 8px 0 0; font-size: 13px; color: var(--ink-dim); }
+
+/* The gate. Four digits in front-end JavaScript stops a four-year-old and nobody else; the real
+   boundary is the kiosk lockdown and the fact that no credential is ever in this page. */
+.admin--gate { place-content: center; justify-items: center; }
+.gate { display: flex; flex-direction: column; align-items: center; gap: 26px; }
+.gate__label { font-size: 15px; color: var(--ink-dim); letter-spacing: 0.04em; }
+.gate__dots { display: flex; gap: 14px; }
+.gate__dots--bad { animation: gate-no 320ms ease; }
+@keyframes gate-no { 25% { transform: translateX(-7px); } 75% { transform: translateX(7px); } }
+.gate__dot { width: 15px; height: 15px; border-radius: 999px; border: 2px solid var(--edge); }
+.gate__dot[data-on="1"] { background: var(--glow); border-color: transparent; }
+.gate__pad { display: grid; grid-template-columns: repeat(3, 84px); gap: 14px; }
+.gate__key { min-width: 84px; min-height: 84px; font: 700 28px/1 inherit; color: var(--ink); }
 
 /* ── home ─────────────────────────────────────────────────────── */
 .home { position: fixed; left: 22px; bottom: 22px; z-index: 40; }
