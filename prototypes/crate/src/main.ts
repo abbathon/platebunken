@@ -17,14 +17,21 @@ const ICON = {
 };
 
 // ── state. In memory only; a prototype must not depend on persistence. ──
-type View = { name: "crate" } | { name: "playing"; album: Album; track: number };
+//
+// `now` is what is PLAYING. `view` is what is ON SCREEN. They were one thing, which meant the
+// crate had no way to know a record was running and could not mark the sleeve it came from —
+// and a four-year-old who walks away and comes back does not hold that in his head.
+type View = { name: "crate" } | { name: "playing" } | { name: "tracks" };
 const state = {
   view: { name: "crate" } as View,
+  now: null as { album: Album; track: number } | null,
   page: 0,          // A
   cursor: 0,        // B and C, and the focused album in A
-  focusTrack: 1,    // focused row in the track list
+  focusTrack: 1,    // focused row in the number line
   playing: false,
   volume: 3,        // of 7 blocks
+  /** When volume last changed, so the crate can show a readout and then let it go. */
+  volumeAt: 0,
   // Direction of the last move, so the selection frame arrives from where the hand came.
   from: { x: 0, y: 0 },
   lastPage: 0,      // the page the crate was showing on the previous render
@@ -33,6 +40,9 @@ const state = {
 
 const PER_PAGE = 9;
 const COLS = 3;
+const VOL_STEPS = 7;
+/** How long the crate shows a volume readout after a change, ms. */
+const VOL_FLASH_MS = 1700;
 
 const lib = await loadLibrary();
 
@@ -52,11 +62,12 @@ const ALBUMS = showAll || curated.length === 0 ? lib.albums : curated;
  * On the kiosk this becomes a service worker doing the same thing across reboots.
  */
 function warmCovers(): void {
+  const which = tileSize();
   for (const a of ALBUMS) {
     if (!a.cover) continue;
     const img = new Image();
     img.decoding = "async";
-    img.src = a.cover.sm;
+    img.src = a.cover[which];
   }
 }
 warmCovers();
@@ -87,6 +98,16 @@ const el = (html: string): HTMLElement => {
   t.innerHTML = html.trim();
   return t.content.firstElementChild as HTMLElement;
 };
+/**
+ * The crate tile is about 374 CSS px wide, so the 512 px `sm` render is short of the ~748
+ * device pixels a 2x screen asks for and the sleeve goes soft — in a product whose entire
+ * argument is that album art deserves the resolution. The kiosk laptop is 1x and unaffected,
+ * but anything shown to him on a retina screen is not.
+ */
+// A function declaration, not a const: warmCovers() runs at module top level, above this
+// point, and a const here would be in its temporal dead zone.
+function tileSize(): "sm" | "lg" { return devicePixelRatio > 1 ? "lg" : "sm"; }
+
 const art = (a: Album, which: "sm" | "lg"): string =>
   a.cover
     // NOT lazy. Holding an arrow key outruns lazy loading and leaves black squares where
@@ -109,12 +130,22 @@ function withImageFallback(host: HTMLElement, a: Album): void {
  * A sleeve in its slot. The slot, not the button, carries focus and the lift, so the frame
  * travels with the cover instead of peeling off it.
  */
-const coverEl = (a: Album, onPlay: (a: Album) => void, which: "sm" | "lg" = "sm"): HTMLElement => {
+const coverEl = (a: Album, onPlay: (a: Album) => void, which: "sm" | "lg" = tileSize()): HTMLElement => {
   const b = el(`<button class="cover" aria-label="${esc(a.artist)} – ${esc(a.title)}">${art(a, which)}</button>`);
   withImageFallback(b, a);
   b.addEventListener("click", () => onPlay(a));
   const slot = el(`<div class="slot"></div>`);
   slot.append(b, frameEl(THEME));
+  /**
+   * The sleeve a record is currently coming from.
+   *
+   * He plays something, wanders off, comes back — and until now the crate told him nothing
+   * about which one was running. He is four; he will not be holding it. A solid bar under the
+   * sleeve, never a ring, so it cannot be confused with the selection frame, and never over
+   * the artwork. §4.2 marks the playing track the same way and for the same reason: a solid
+   * block of colour, not a pulse, not a glow, not an animation.
+   */
+  if (state.now?.album.id === a.id) slot.dataset.nowPlaying = "1";
   return slot;
 };
 
@@ -148,12 +179,39 @@ function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 const play = (album: Album, track = 1) => {
-  state.view = { name: "playing", album, track };
+  state.now = { album, track };
   state.focusTrack = track;
   state.playing = true;
+  state.view = { name: "playing" };
   render();
 };
+
 const goHome = () => { state.view = { name: "crate" }; render(); };
+
+/**
+ * The record ended.
+ *
+ * Principle 3 says silence is a feature: a record stops, and that is what sends him back to
+ * the crate. That only works if the screen goes with him. Staying on a stopped now-playing
+ * screen makes an ending look like a failure, and he has no way to tell the two apart.
+ *
+ * So: back to the crate, with the album that just finished still selected. He lands exactly
+ * where choosing happens, and the selection is the only record he has of what he just heard.
+ *
+ * Here it is reached by skipping past the last track. On the kiosk it is whatever Music
+ * Assistant reports when the queue runs out — the same function, a different trigger.
+ */
+function endOfRecord(): void {
+  const done = state.now?.album;
+  state.now = null;
+  state.playing = false;
+  if (done) {
+    const i = ALBUMS.findIndex((a) => a.id === done.id);
+    if (i >= 0) { state.cursor = i; state.from = { x: 0, y: 0 }; }
+  }
+  state.view = { name: "crate" };
+  render();
+}
 
 // ── A · Vegg — 9 covers, tap any one. Position is the index. ─────
 function wall(): HTMLElement {
@@ -191,6 +249,27 @@ function wall(): HTMLElement {
     grid.append(cell);
   });
 
+  /**
+   * How much crate is behind you and how much is ahead, as thickness rather than as a count.
+   *
+   * This replaced a row of one pip per page. Two pips was fine; the crate is append-only and
+   * fed by a curation worker, so at a hundred albums it is a row of twelve dots — and reading
+   * that needs exactly the two things PRODUCT.md measured him as unable to do: counting past a
+   * subitizing range of 2.8, and comparing ordinal positions at 0.66 accuracy. §4.2 already
+   * bans pips beside the track numerals for this reason; the crate had inherited none of it.
+   *
+   * A stack of sleeve edges seen side-on is the same information as a quantity you can see
+   * rather than count, it is what the physical object actually looks like, and it goes to
+   * nothing at either end — which is also what makes the silent stop legible instead of dead.
+   */
+  const total = ALBUMS.length;
+  const behind = state.page * per;
+  const ahead = Math.max(0, total - (state.page + 1) * per);
+  const depth = (side: "before" | "after", n: number) =>
+    el(`<div class="depth depth--${side}" aria-hidden="true"><i style="--fill:${((n / total) * 100).toFixed(1)}%"></i></div>`);
+  root.prepend(depth("before", behind));
+  root.append(depth("after", ahead));
+
   const foot = root.querySelector(".wall__foot")!;
   const prev = el(`<button class="btn btn--lg" aria-label="Forrige side">${ICON.left}</button>`);
   const next = el(`<button class="btn btn--lg" aria-label="Neste side">${ICON.right}</button>`);
@@ -198,9 +277,7 @@ function wall(): HTMLElement {
   next.toggleAttribute("disabled", state.page >= pages - 1);
   prev.addEventListener("click", () => { moveCursor(-per); });
   next.addEventListener("click", () => { moveCursor(per); });
-  const pips = el(`<div class="pips">${Array.from({ length: pages },
-    (_, i) => `<span class="pip" data-on="${i === state.page ? 1 : 0}"></span>`).join("")}</div>`);
-  foot.append(prev, pips, next);
+  foot.append(prev, next);
   return root;
 }
 
@@ -256,51 +333,74 @@ function shelf(): HTMLElement {
   return root;
 }
 
-// ── now playing — shared by all three ────────────────────────────
+// ── now playing — §4.3 ───────────────────────────────────────────
+//
+// Cover near-fullscreen, uncropped, nothing over it. The band name once, below the art,
+// never a control. Four verbs underneath and nothing else.
+//
+// This used to be a two-column split with a scrolling track list beside the cover, which is a
+// desktop music player: roughly sixty percent text, aimed at someone who cannot read. The
+// track list is a screen of its own now (§4.2), reached deliberately with up or down.
 function nowPlaying(album: Album, track: number): HTMLElement {
   const root = el(`<section class="stage np">
     <div class="np__art"><div class="cover" id="np-art" style="cursor:default">${art(album, "lg")}</div></div>
-    <div class="np__side">
-      <div>
-        <h1 class="np__artist">${esc(album.artist.toUpperCase())}</h1>
-        <p class="np__album">${esc(album.title)}${album.year ? ` · ${album.year}` : ""}</p>
-      </div>
-      <ol class="tracks"></ol>
-      <div class="transport"></div>
-    </div></section>`);
-
+    <h1 class="np__artist">${esc(album.artist.toUpperCase())}</h1>
+    <div class="transport"></div>
+  </section>`);
   withImageFallback(root.querySelector("#np-art") as HTMLElement, album);
-
-  const list = root.querySelector(".tracks")!;
-  if (album.tracks.length === 0) {
-    list.append(el(`<li class="tracks__none">Music Assistant returned no tracks for this album.</li>`));
-  }
-  album.tracks.forEach((t) => {
-    const row = el(`<li><button class="track" aria-current="${t.n === track}" data-focus="${t.n === state.focusTrack ? 1 : 0}">
-      <span class="track__n">${t.n}</span><span class="track__t">${esc(t.title)}</span></button></li>`);
-    row.querySelector("button")!.addEventListener("click", () => {
-      state.view = { name: "playing", album, track: t.n }; state.playing = true; render();
-    });
-    list.append(row);
-  });
 
   const tp = root.querySelector(".transport")!;
   const pp = el(`<button class="btn btn--lg btn--play" aria-label="${state.playing ? "Pause" : "Spill"}">${state.playing ? ICON.pause : ICON.play}</button>`);
   pp.addEventListener("click", () => { state.playing = !state.playing; render(); });
   const skip = el(`<button class="btn btn--lg" aria-label="Neste spor">${ICON.next}</button>`);
-  skip.addEventListener("click", () => {
-    const n = Math.min(album.tracks.length, track + 1);
-    state.view = { name: "playing", album, track: n }; render();
-  });
+  skip.addEventListener("click", () => skipTrack(album, track));
+  tp.append(pp, skip, volume());
+  return root;
+}
+
+/** Skip forward. Past the last track is not a dead press — it is the end of the record. */
+function skipTrack(album: Album, track: number): void {
+  if (track >= album.tracks.length) { endOfRecord(); return; }
+  state.now = { album, track: track + 1 };
+  state.focusTrack = track + 1;
+  render();
+}
+
+/** The volume control: two large buttons and a row of filled blocks. */
+function volume(): HTMLElement {
   const vol = el(`<div class="vol"></div>`);
   const down = el(`<button class="btn" aria-label="Lavere">${ICON.minus}</button>`);
   const up   = el(`<button class="btn" aria-label="Høyere">${ICON.plus}</button>`);
-  const blocks = () => el(`<div class="vol__blocks">${Array.from({ length: 7 },
+  down.addEventListener("click", () => setVolume(-1));
+  up.addEventListener("click", () => setVolume(1));
+  vol.append(down, volumeBlocks(), up);
+  return vol;
+}
+
+const volumeBlocks = (): HTMLElement =>
+  el(`<div class="vol__blocks">${Array.from({ length: VOL_STEPS },
     (_, i) => `<span class="vol__b" data-on="${i < state.volume ? 1 : 0}"></span>`).join("")}</div>`);
-  down.addEventListener("click", () => { state.volume = Math.max(0, state.volume - 1); render(); });
-  up.addEventListener("click",   () => { state.volume = Math.min(7, state.volume + 1); render(); }); // ceiling is silent
-  vol.append(down, blocks(), up);
-  tp.append(pp, skip, vol);
+
+// ── the album view — §4.2, the number line ───────────────────────
+//
+// One straight, evenly spaced vertical column. The geometry is what carries the measured
+// effect, not the numerals, so this is never a wheel, arc, ring, carousel or grid. True track
+// numbers, 1..n, no truncation and no renumbering: accuracy is what makes it learnable. No
+// pips beside the numerals — mean subitizing range at 42-57 months is 2.8, and the row's
+// position in the column already is the magnitude cue.
+function trackList(album: Album, playingTrack: number | null): HTMLElement {
+  const root = el(`<section class="stage tracks-view"><ol class="tracks"></ol></section>`);
+  const list = root.querySelector(".tracks")!;
+  if (album.tracks.length === 0) {
+    list.append(el(`<li class="tracks__none">Music Assistant returned no tracks for this album.</li>`));
+    return root;
+  }
+  for (const t of album.tracks) {
+    const row = el(`<li><button class="track" aria-current="${t.n === playingTrack}" data-focus="${t.n === state.focusTrack ? 1 : 0}">
+      <span class="track__n">${t.n}</span><span class="track__t">${esc(t.title)}</span></button></li>`);
+    row.querySelector("button")!.addEventListener("click", () => play(album, t.n));
+    list.append(row);
+  }
   return root;
 }
 
@@ -406,10 +506,25 @@ function moveGrid(dx: number, dy: number): void {
   render();
 }
 
+/**
+ * Volume, from anywhere.
+ *
+ * The crate used to accept these keys and show nothing — the blocks only existed on the now
+ * playing view — so pressing + in the crate changed the state and moved nothing on screen. A
+ * press that appears to do nothing is exactly the disappointment principle 1 is about, and
+ * volume is one of the four verbs, so he will press it here.
+ *
+ * At the ceiling the blocks render full and do not move, which says "that is all there is"
+ * without a word. Silence there would be indistinguishable from a broken key.
+ */
 function setVolume(delta: number): void {
-  state.volume = Math.max(0, Math.min(7, state.volume + delta));
+  state.volume = Math.max(0, Math.min(VOL_STEPS, state.volume + delta));
+  state.volumeAt = performance.now();
   render();
+  clearTimeout(volumeTimer);
+  volumeTimer = setTimeout(render, VOL_FLASH_MS + 40);
 }
+let volumeTimer: ReturnType<typeof setTimeout>;
 
 function onKey(e: KeyboardEvent): void {
   const tag = (e.target as HTMLElement)?.tagName ?? "";
@@ -437,54 +552,47 @@ function onKey(e: KeyboardEvent): void {
   }
 
   const v = variant();
-  const playing = state.view.name === "playing";
+  const where = state.view.name;
+  const now = state.now;
 
   switch (e.key) {
     case "ArrowLeft":
       e.preventDefault();
-      if (playing) setVolume(-1);
-      else if (v === "A") moveGrid(-1, 0);
-      else moveCursor(-1);
+      if (where === "crate") { v === "A" ? moveGrid(-1, 0) : moveCursor(-1); }
+      else setVolume(-1);                       // left and right are volume once a record is on
       return;
     case "ArrowRight":
       e.preventDefault();
-      if (playing) setVolume(1);
-      else if (v === "A") moveGrid(1, 0);
-      else moveCursor(1);
+      if (where === "crate") { v === "A" ? moveGrid(1, 0) : moveCursor(1); }
+      else setVolume(1);
       return;
     case "ArrowUp":
+    case "ArrowDown": {
       e.preventDefault();
-      if (playing) moveTrack(-1);
-      else if (v === "A") moveGrid(0, -1);
-      else moveCursor(-1);
+      const d = e.key === "ArrowDown" ? 1 : -1;
+      if (where === "crate") { v === "A" ? moveGrid(0, d) : moveCursor(d); return; }
+      // Up and down walk the number line. From now playing they open it: §4 treats the track
+      // line as part of that view, reached by the same keys that then move within it.
+      if (where === "playing" && now) { state.view = { name: "tracks" }; render(); return; }
+      moveTrack(d);
       return;
-    case "ArrowDown":
-      e.preventDefault();
-      if (playing) moveTrack(1);
-      else if (v === "A") moveGrid(0, 1);
-      else moveCursor(1);
-      return;
+    }
     case "Enter":
       e.preventDefault();
-      if (playing) {
-        const { album } = state.view as { album: Album };
-        state.view = { name: "playing", album, track: state.focusTrack };
-        state.playing = true;
-        render();
-      } else {
-        play(ALBUMS[state.cursor]);
-      }
+      if (where === "crate") play(ALBUMS[state.cursor]);
+      else if (where === "tracks" && now) play(now.album, state.focusTrack);
+      else if (now) { state.playing = true; render(); }
       return;
     case " ":
       // Space is play/pause everywhere, the way every media player has worked forever.
       e.preventDefault();
-      if (playing) { state.playing = !state.playing; render(); }
-      else play(ALBUMS[state.cursor]);
+      if (where === "crate") play(ALBUMS[state.cursor]);
+      else { state.playing = !state.playing; render(); }
       return;
     case "Escape":
     case "Backspace":
       e.preventDefault();
-      if (playing) goHome();
+      if (where !== "crate") goHome();
       return;
   }
 
@@ -499,8 +607,7 @@ const VOL_UP = new Set(["+", "=", "NumpadAdd", "AudioVolumeUp", "PageUp"]);
 const VOL_DOWN = new Set(["-", "_", "NumpadSubtract", "AudioVolumeDown", "PageDown"]);
 
 function moveTrack(delta: number): void {
-  if (state.view.name !== "playing") return;
-  const n = state.view.album.tracks.length;
+  const n = state.now?.album.tracks.length ?? 0;
   if (n === 0) return;
   state.focusTrack = Math.max(1, Math.min(n, state.focusTrack + delta));
   render();
@@ -511,20 +618,36 @@ addEventListener("keydown", onKey);
 
 function render() {
   app.replaceChildren();
-  if (state.view.name === "playing") {
-    app.append(nowPlaying(state.view.album, state.view.track));
-    const home = el(`<button class="btn home" aria-label="Tilbake til bunken">${ICON.home}</button>`);
-    home.addEventListener("click", goHome);
-    app.append(home);
+  const now = state.now;
+
+  if (state.view.name === "playing" && now) {
+    app.append(nowPlaying(now.album, now.track));
+  } else if (state.view.name === "tracks" && now) {
+    app.append(trackList(now.album, state.playing ? now.track : null));
   } else {
     app.append({ A: wall, B: stack, C: shelf }[variant()]());
     // In the crate only. Now playing has the home target in the same corner, and a screen that
     // is about to go dark is not a place to offer choices.
     app.append(themePicker(THEME, setTheme));
-    // Now playing prints the same three facts large; repeating them small underneath it would
+    // Now playing prints the artist large already; repeating it small underneath it would
     // just be the screen talking to itself.
     app.append(caption(ALBUMS[state.cursor]));
   }
+
+  if (state.view.name !== "crate") {
+    const home = el(`<button class="btn home" aria-label="Tilbake til bunken">${ICON.home}</button>`);
+    home.addEventListener("click", goHome);
+    app.append(home);
+  }
+
+  // The volume readout, wherever he is. On now playing the blocks are permanent; in the crate
+  // and the number line they appear on change and let themselves go.
+  if (state.view.name !== "playing" && performance.now() - state.volumeAt < VOL_FLASH_MS) {
+    const flash = el(`<div class="vol-flash" aria-hidden="true"></div>`);
+    flash.append(volumeBlocks());
+    app.append(flash);
+  }
+
   app.append(switcher());
 }
 render();

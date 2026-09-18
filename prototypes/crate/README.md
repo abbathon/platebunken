@@ -35,6 +35,14 @@ nothing is lost with it.
 A line in the bottom gutter names the selected album's artist, title and year. Not for the
 child — the frame is what tells him what is selected — but useful for whoever is next to him.
 
+Crate depth runs down both sides: sleeve edges showing how much is behind you and how much is
+ahead, as thickness rather than as a countable row of pips. The playing sleeve carries a solid
+bar beneath it. Volume shows a readout wherever you press it. Skipping past the last track ends
+the record and returns you to the crate with that album selected.
+
+Crate tiles load the 1024px render on HiDPI screens: the 512 is short of what a 2x display asks
+of a ~374px tile, and soft covers are the one thing this product cannot afford.
+
 Show the child all three themes in a minute and watch which one he reaches for.
 
 ## Data

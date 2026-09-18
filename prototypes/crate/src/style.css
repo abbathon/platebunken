@@ -148,7 +148,7 @@ html, body {
 .stage { padding: 28px clamp(28px, 4vw, 56px); height: 100%; display: grid; gap: 22px; }
 
 /* ── A · Vegg ─────────────────────────────────────────────────── */
-.wall { grid-template-rows: 1fr auto; }
+.wall { grid-template-rows: 1fr auto; position: relative; }
 /* Tile is bounded on BOTH axes: never wider than a third of the page, never taller
    than a third of what's left once the flip row and gutters are taken out. */
 .wall__grid {
@@ -178,9 +178,39 @@ html, body {
   from { opacity: 0.32; translate: calc(var(--dir) * 58px) 0; }
   to   { opacity: 1; translate: none; }
 }
-.pips { display: flex; gap: 10px; }
-.pip { width: 14px; height: 14px; border-radius: 999px; background: var(--edge); }
-.pip[data-on="1"] { background: var(--glow); }
+/* ── crate depth ──────────────────────────────────────────────────
+   How much crate is behind you and how much is ahead, as thickness rather than as a count.
+
+   This replaced a row of one pip per page. Two pips was fine, but the crate is append-only and
+   fed by a curation worker, and reading twelve of them needs exactly the two things PRODUCT.md
+   measured him as unable to do: counting past a subitizing range of 2.8, and comparing ordinal
+   positions at 0.66 accuracy, barely above chance. §4.2 already bans pips beside the track
+   numerals for this reason; the crate had inherited none of it.
+
+   Sleeve edges seen side-on: a quantity you see rather than count, which is what the physical
+   object actually looks like. It goes to nothing at either end, which is also what makes the
+   silent stop at the ends of the crate legible instead of merely dead. */
+.depth {
+  position: absolute; top: 0; bottom: 124px; width: 22px;
+  pointer-events: none;
+}
+.depth--before { left: clamp(6px, 1vw, 18px); }
+.depth--after  { right: clamp(6px, 1vw, 18px); }
+/* Absolutely positioned, because a percentage height needs a definite containing block and a
+   centred grid row does not give it one — laid out that way the rails computed to 0x0. */
+.depth i {
+  position: absolute; left: 0; right: 0;
+  height: var(--fill);
+  top: calc(50% - var(--fill) / 2);
+  /* Sleeve edges: a lit rule every 7px, not a solid bar. Mixed off --ink, not --edge:
+     --edge is a hairline colour on a near-black background, and this has to read from across
+     a room, which is the whole job it inherited from the pips. */
+  background: repeating-linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--ink) 34%, transparent) 0 2px,
+    transparent 2px 7px);
+  transition: height 220ms cubic-bezier(0.16, 1, 0.3, 1), top 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
 
 /* ── B · Bunken ───────────────────────────────────────────────── */
 .stack { place-items: center; grid-template-rows: 1fr auto; }
@@ -207,16 +237,25 @@ html, body {
 .shelf__slot[data-focus="1"] .cover { filter: none; }
 .shelf__foot { display: flex; justify-content: center; }
 
-/* ── now playing ──────────────────────────────────────────────── */
-.np { grid-template-columns: minmax(0, 1fr) minmax(320px, 0.85fr); gap: clamp(28px, 4vw, 64px); align-items: center; }
-.np__art { width: 100%; max-width: min(64vh, 100%); justify-self: center; }
-.np__side { display: grid; gap: 20px; align-content: center; min-height: 0; }
-.np__artist { font-size: clamp(28px, 4.2vw, 56px); font-weight: 800; letter-spacing: -0.03em; line-height: 0.96; margin: 0; }
-.np__album { color: var(--ink-dim); font-size: 17px; margin: 0; }
+/* ── now playing — §4.3 ──────────────────────────────────────────
+   Cover near-fullscreen, square, uncropped, nothing over it. The band name once, below the
+   art, never a control. Four verbs underneath and nothing else. This was a two-column split
+   with a scrolling track list beside the cover, which is a desktop music player: mostly text,
+   aimed at someone who cannot read. */
+.np { grid-template-rows: minmax(0, 1fr) auto auto; justify-items: center; gap: clamp(14px, 2.2vh, 28px); }
+.np__art { height: 100%; aspect-ratio: 1; max-width: 100%; display: grid; }
+.np__art .cover { height: 100%; width: auto; aspect-ratio: 1; margin-inline: auto; }
+.np__artist {
+  font-size: clamp(28px, 4.4vw, 60px); font-weight: 800; letter-spacing: -0.03em;
+  line-height: 0.96; margin: 0; text-align: center; max-width: 92vw;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
-/* The track list is a NUMBER LINE: one straight, evenly spaced column.
-   Geometry carries the pedagogic effect, not the numerals. Never a wheel or grid. */
-.tracks { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 42vh; scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
+/* ── the album view — §4.2, the number line ─────────────────────
+   One straight, evenly spaced column. Geometry carries the pedagogic effect, not the
+   numerals. Never a wheel, arc, ring, carousel or grid. */
+.tracks-view { align-content: center; }
+.tracks { list-style: none; margin: 0 auto; padding: 0; width: min(760px, 100%); overflow-y: auto; max-height: 100%; scrollbar-width: thin; scrollbar-color: var(--edge) transparent; }
 .track {
   display: grid; grid-template-columns: 78px 1fr; align-items: center;
   gap: 16px; min-height: 96px; width: 100%;
@@ -234,7 +273,7 @@ html, body {
 .track[aria-current="true"] .track__t { color: var(--on-glow-dim); }
 @media (hover: hover) { .track:hover:not([aria-current="true"]) { background: var(--bg-raised); border-radius: 6px; } }
 
-.transport { display: flex; gap: 18px; align-items: center; }
+.transport { display: flex; gap: clamp(18px, 3vw, 40px); align-items: center; flex-wrap: wrap; justify-content: center; }
 .vol { display: flex; gap: 14px; align-items: center; }
 .vol__blocks { display: flex; gap: 7px; }
 .vol__b { width: 22px; height: 46px; border-radius: 3px; background: color-mix(in oklab, var(--bg-raised) 78%, var(--edge)); }
@@ -271,6 +310,34 @@ html, body {
 @media (hover: hover) { .picker__dot:hover svg { opacity: 1; } }
 .picker__dot:active { transform: scale(0.94); }
 @media (hover: hover) { .picker__dot:hover { border-color: var(--dot-ring); } }
+
+/* ── the playing sleeve ───────────────────────────────────────────
+   A solid bar under the sleeve a record is currently coming from. Never a ring, so it cannot
+   be confused with the selection frame, and never over the artwork. §4.2 marks the playing
+   track the same way and for the same reason: a solid block of colour, not a pulse, not a
+   glow, not an animation. */
+.slot[data-now-playing="1"]::after {
+  content: ""; position: absolute;
+  left: 18%; right: 18%; bottom: calc(var(--frame-offset) * -1 - 12px);
+  height: 7px; border-radius: 2px;
+  background: var(--glow);
+  pointer-events: none;
+}
+
+/* ── the volume readout ───────────────────────────────────────────
+   The crate used to take + and - and show nothing, because the blocks only existed on the now
+   playing view. A press that appears to do nothing is the disappointment principle 1 is about,
+   and volume is one of the four verbs, so he presses it here. Appears on change, lets itself
+   go. At the ceiling the blocks sit full and do not move, which says "that is all there is"
+   without a word. */
+.vol-flash {
+  position: fixed; top: 26px; left: 50%; transform: translateX(-50%);
+  z-index: 60; padding: 14px 18px; border-radius: 14px;
+  background: color-mix(in oklab, var(--bg-raised) 88%, transparent);
+  box-shadow: 0 10px 34px -12px rgb(0 0 0 / 0.85);
+  animation: vol-flash-in 140ms ease-out both;
+}
+@keyframes vol-flash-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translateX(-50%); } }
 
 /* ── the caption ──────────────────────────────────────────────────
    What is selected, in words, in the bottom gutter. Not for the child: he cannot read it and

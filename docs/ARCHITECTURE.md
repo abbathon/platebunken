@@ -118,8 +118,14 @@ imitating. The flip keeps the same row and lands on the opposite column, so the 
 sense of position survives it. ↑↓ move within the page and stop at its edges. Movement
 stops silently at the ends of the crate: no error, nothing happens.
 
-On the now-playing view, ↑↓ walk the track number line, ←→ are volume, Enter plays the
-focused track, and **Space is play/pause everywhere**.
+On the now-playing view ←→ are volume, and ↑↓ open the **number line** (§4.2) and then walk
+it; Enter plays the focused track. **Space is play/pause everywhere.**
+
+**Volume is answered from every screen.** Now playing shows the blocks permanently; the crate
+and the number line show them on change and then let them go. A key that changes state and
+moves nothing on screen is a key he learns is broken. At the ceiling the blocks sit full and
+do not move, which says *that is all there is* without a word — silence there would be
+indistinguishable from a dead key.
 
 **Volume keys are accepted from several sources** — `+`/`−`, `NumpadAdd`/`NumpadSubtract`,
 the media keys, and PageUp/PageDown — so the final controller does not dictate the code.
@@ -150,6 +156,18 @@ Four verbs, plus two toggles. Nothing else exists.
   half-faded while he moves.
 - **Append-only order.** New albums are appended, never inserted. Position `2-3` is the same album
   forever.
+- **How much crate is behind and ahead, as thickness rather than as a count.** Sleeve edges
+  seen side-on, down each side of the page, growing and shrinking as he flips. This replaced a
+  row of one pip per page: two pips was fine, but the crate is append-only and fed by a
+  curation worker, and reading twelve of them needs exactly the two things PRODUCT.md measured
+  him as unable to do — counting past a subitizing range of 2.8, and comparing ordinal
+  positions at 0.66 accuracy, barely above chance. §4.2 already banned pips beside the track
+  numerals for this reason; the crate had inherited none of it. The rails go to nothing at
+  either end, which is also what makes the silent stop legible rather than merely dead.
+- **The sleeve a record is currently coming from is marked** with a solid bar beneath it —
+  never a ring, so it cannot be confused with the selection frame, and never over the artwork.
+  He plays something, wanders off and comes back; he is four and will not be holding which one
+  it was. This is the return half of §4.4's home target.
 - **No text the child needs.** Cover art only — with one line in the bottom gutter naming the
   selected album's artist, title and year. It is not for him: he cannot read it and never needs
   to, because the frame already says what is selected and this only ever agrees with the frame.
@@ -182,6 +200,16 @@ The track list, rendered as a number line — the best-evidenced pedagogic featu
 
 - Cover near-fullscreen, square, uncropped, no text overlaid.
 - Band name **once**, large, centred, plain capitals — below the art, never a control.
+- **The track list is not here.** It is a screen of its own (§4.2), reached deliberately with
+  ↑↓. Putting it beside the cover produces a desktop music player: a screen that is mostly
+  text, aimed at someone who cannot read.
+- **Skipping past the last track is the end of the record, not a dead press.** The screen goes
+  back to the crate with the finished album still selected. Principle 3 says silence is a
+  feature — a record stops, and that is what sends him back to the crate — and that only works
+  if the screen goes with him. Sitting on a stopped now-playing screen makes an ending look
+  like a failure, and he has no way to tell the two apart. He lands where choosing happens,
+  and the selection is the only record he has of what he just heard. On the kiosk the trigger
+  is Music Assistant reporting an empty queue; the behaviour is the same function.
 - **The host owns blanking, not the app.** The display is always on, blanks after a period, then
   powers down — `xset s blank` + `xset dpms` on the Debian kiosk. The app implements no idle
   timer, no dim, no screensaver, no clock and no visualiser.
@@ -579,7 +607,7 @@ Development happens on macOS; the Linux laptop is a deployment target, not a dev
 3. Now playing: cover, transport, volume blocks, dim.
 4. SQLite + approved-set model; the crate reads from it. **Done** (`src/store/`, §5.1) — the
    store and the gate exist and are tested; wiring the prototype crate to it is part of step 2.
-5. Album view: the number-line track list.
+5. Album view: the number-line track list. **Done** — §4.2, reached with ↑↓ from now playing.
 6. Admin app + review queue.
 7. Curation worker: seed → suggestions → annotations → queue.
 8. MQTT discovery to HA.
