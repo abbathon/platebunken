@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "ma:user": "node --env-file=.env scripts/ma-user.ts",
     "test": "node --test 'src/**/*.test.ts'",
-    "db:seed": "node --env-file=.env scripts/db-seed.ts"
+    "db:seed": "node --env-file=.env scripts/db-seed.ts",
+    "curate": "node --env-file=.env scripts/curate.ts"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

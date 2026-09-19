@@ -187,4 +187,30 @@ export const MIGRATIONS: readonly string[] = [
     updated_at TEXT NOT NULL
   ) STRICT;
   `,
+
+  /* v4 ─────────────────────────────────────────────────────────────────── */ `
+  -- A cache for the curation worker, and ONLY a cache.
+  --
+  -- Every row here can be deleted and refetched. Nothing the parent decided lives in this
+  -- table, nothing the child sees depends on it, and no invariant is defended by it — which
+  -- is why it is one loose key-value table rather than a modelled one. The things it holds
+  -- are answers from three services that must not be asked again on every run:
+  --
+  --   artist_mbid  an artist name -> its MusicBrainz id. MusicBrainz asks for no more than
+  --                one request per second, and the crate's artists do not change hourly.
+  --   similar      an MBID -> its ListenBrainz Labs neighbours.
+  --   theme_roster Encyclopaedia Metallum's band list for one theme term. MA sets
+  --                Crawl-delay: 3 and the National Socialism roster alone is 1256 bands, so
+  --                this is fetched monthly and read from here every run.
+  --
+  -- fetched_at is what makes a row refreshable; there is no TTL column because the policy
+  -- belongs to the caller, and the two callers here want very different ones.
+  CREATE TABLE curate_cache (
+    kind       TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    value      TEXT NOT NULL,   -- JSON
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (kind, key)
+  ) STRICT;
+  `,
 ];

@@ -580,3 +580,56 @@ export function mostPlayed(db: DatabaseSync, profileId: string, limit: number): 
   ).all(profileId, limit) as Record<string, unknown>[])
     .map((r) => ({ uri: r.uri as string, plays: Number(r.plays) }));
 }
+
+/* ── the curation worker's cache ─────────────────────────────────────────
+ * A cache and only a cache: every row can be dropped and refetched, and nothing the parent
+ * decided or the child sees depends on it. See migration v4.
+ */
+
+export interface Cached<T> {
+  value: T;
+  fetchedAt: string;
+}
+
+export function cacheGet<T>(db: DatabaseSync, kind: string, key: string): Cached<T> | null {
+  const row = db.prepare(`SELECT value, fetched_at FROM curate_cache WHERE kind = ? AND key = ?`)
+    .get(kind, key) as { value: string; fetched_at: string } | undefined;
+  if (!row) return null;
+  try {
+    return { value: JSON.parse(row.value) as T, fetchedAt: row.fetched_at };
+  } catch {
+    // A corrupt cache row is a row to refetch, never a reason to fail a run.
+    return null;
+  }
+}
+
+export function cachePut(db: DatabaseSync, kind: string, key: string, value: unknown): void {
+  db.prepare(
+    `INSERT INTO curate_cache (kind, key, value, fetched_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(kind, key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at`,
+  ).run(kind, key, JSON.stringify(value), now());
+}
+
+/** True when there is no row, or the row is older than `maxAgeDays`. */
+export function cacheStale(db: DatabaseSync, kind: string, key: string, maxAgeDays: number): boolean {
+  const row = cacheGet<unknown>(db, kind, key);
+  if (!row) return true;
+  const age = Date.now() - new Date(row.fetchedAt).getTime();
+  return !(age < maxAgeDays * 86_400_000);
+}
+
+/** Every artist currently in this profile's crate — the signal the worker starts from. */
+export function crateArtists(db: DatabaseSync, profileId: string): string[] {
+  const rows = db.prepare(
+    `SELECT DISTINCT a.artist FROM approved ap JOIN album a ON a.uri = ap.uri
+      WHERE ap.profile_id = ? AND ap.withdrawn_at IS NULL AND a.artist <> ''
+      ORDER BY a.artist`,
+  ).all(profileId) as { artist: string }[];
+  return rows.map((r) => r.artist);
+}
+
+/** Album uris already known, so the worker never re-suggests something already decided. */
+export function knownUris(db: DatabaseSync): Set<string> {
+  const rows = db.prepare(`SELECT uri FROM album`).all() as { uri: string }[];
+  return new Set(rows.map((r) => r.uri));
+}

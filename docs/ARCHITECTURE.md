@@ -490,6 +490,24 @@ Analysis provider (CLAP embeddings) worth trying.
 extended-quota apps on 2024-11-27. A key registered today is permanently blocked. Do not design
 around it.
 
+**Two things the worker learned the hard way, verified live 2026-09-19** (`src/curate/`):
+
+*Candidates come from the Qobuz catalogue, not the library.* `music/search` with
+`library_only: true` returns **zero albums** for the artists Labs suggests — the household's
+library is the NAS via Jellyfin and these records are not in it. So the worker searches the
+catalogue, which is what "Qobuz is the primary source and albums stream" below already
+implies. **That search is fuzzy and matches on title as well as artist**: searching *In Flames*
+returns Ruelle's *Up In Flames* and The Weeknd's *Dancing In The Flames*. Every result is
+filtered on the artist name before it can reach the queue.
+
+*Labs' similarity score is not comparable across artists.* Ranking one pooled list by raw score
+produced a review queue of Queen, The Beatles, Madonna, Daft Punk and Coldplay — the crate's one
+mainstream artist has orders of magnitude more listeners than its metal, so his neighbours
+outscored everything and Amon Amarth, Finntroll and Dunderbeist contributed nothing. Nothing
+errored; the worker looked like it worked. The queue is now built round-robin: **each crate
+artist's best neighbour before anyone's second**, which is what makes the queue resemble the
+crate.
+
 **Annotations are advisory. Nothing is ever auto-rejected.**
 
 | Flag | Source | Note |
