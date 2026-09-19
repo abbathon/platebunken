@@ -14,6 +14,7 @@
  * now: `vite dev` proxies to this server, so what is developed against is what ships.
  */
 import { MassClient } from "../ma/client.ts";
+import { createListenTracker, type Listen, type ListenTracker, type NowPlaying } from "../ma/listens.ts";
 import { config, canPlay } from "./config.ts";
 
 let client: MassClient | null = null;
@@ -40,10 +41,62 @@ export function restoreTarget(playerId: string | null): void {
   targetOverride = playerId;
 }
 
+/**
+ * What is actually playing on the chosen speaker.
+ *
+ * Rebuilt whenever the target changes, because a tracker follows exactly one queue and a
+ * half-finished record on the old speaker is not a listen on the new one. `null` until the
+ * first connection: there is no queue to follow before there is a client.
+ */
+let tracker: ListenTracker | null = null;
+let trackedQueue: string | null = null;
+
+/**
+ * Listens are LOGGED, not yet stored.
+ *
+ * The page still posts `/api/played` when the child presses a track, and that is still the
+ * only writer to the play log. Turning this into the writer instead is the right end state —
+ * the server knows whether playback actually started and the page only knows what was
+ * pressed — but it is a switchover, not an addition: running both would double-count every
+ * deliberate play and halve the threshold for a favourite.
+ *
+ * It waits on evidence rather than on confidence. Nothing in this project has ever made a
+ * sound, so no one has yet seen a real track transition. When one has been watched end to
+ * end, add migration v4 (a `deliberate` column on `play`, defaulting to 1 — every existing
+ * row came from a press), point the favourite derivation at it, and retire `/api/played`.
+ */
+function onListen(listen: Listen): void {
+  const how = listen.deliberate ? "chose" : "auto";
+  const of = listen.durationSec ? `/${listen.durationSec}s` : "";
+  console.log(
+    `[listen] ${how} ${listen.trackNumber ?? "?"} ${listen.name} ` +
+    `${listen.heardSec}s${of} ${listen.completed ? "complete" : "partial"}`,
+  );
+}
+
+function trackerFor(queueId: string): ListenTracker {
+  if (tracker && trackedQueue === queueId) return tracker;
+  // The old tracker's open listen is real and already happened: close it before dropping it.
+  tracker?.flush();
+  trackedQueue = queueId;
+  tracker = createListenTracker({ queueId, onListen });
+  return tracker;
+}
+
+/** What is on now, or null. The now-playing screen's honest answer. */
+export function nowPlaying(): NowPlaying | null {
+  return tracker?.current() ?? null;
+}
+
 export async function ma(): Promise<MassClient> {
   if (client) return client;
   if (!connecting) {
-    const c = new MassClient({ baseUrl: config.ma.baseUrl, token: config.ma.token });
+    const c = new MassClient({
+      baseUrl: config.ma.baseUrl,
+      token: config.ma.token,
+      // The only reason the server ever learns that track 2 started when track 1 ended.
+      onQueueUpdate: (q) => trackerFor(target()).observe(q),
+    });
     // The client reconnects itself, so one connection is cached for the life of the process.
     // A failed first connect clears the latch so the next request tries again rather than
     // sticking — an MA that was restarting when this container started must not poison it.
@@ -53,6 +106,11 @@ export async function ma(): Promise<MassClient> {
 }
 
 export function closeMa(): void {
+  // Flush first: a listen still open when the process goes down is a listen that never
+  // happened, and on a container that redeploys often that is a real loss.
+  tracker?.flush();
+  tracker = null;
+  trackedQueue = null;
   client?.close();
   client = null;
   connecting = null;
@@ -133,6 +191,9 @@ export async function play(req: PlayRequest): Promise<number> {
   const level = levelFor(req.step, req.steps) ?? config.volume.start;
   await c.setVolume(player, level);
 
+  // BEFORE the command, not after. MA can report the new queue faster than the command's own
+  // reply comes back, and arming afterwards would credit the child's own choice to autoplay.
+  trackerFor(player).expectDeliberate();
   await c.playAlbum(player, req.uri, req.startUri);
 
   // Only reached for an album whose tracks carry no uri — an unseeded or partially tagged

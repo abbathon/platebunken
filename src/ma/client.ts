@@ -1,4 +1,4 @@
-import type { Album, Player, ServerInfo, Track } from "./types.ts";
+import type { Album, Player, PlayerQueue, ServerInfo, Track } from "./types.ts";
 import { CLIENT_MIN_SERVER_SCHEMA } from "./types.ts";
 
 /**
@@ -11,7 +11,15 @@ import { CLIENT_MIN_SERVER_SCHEMA } from "./types.ts";
  *   4. events arrive unsolicited; command results carry the echoed message_id
  *
  * The connection is long-lived by design: a kiosk holds this open for months and never
- * polls. Player state is maintained from PLAYER_UPDATED events.
+ * polls. Player state is maintained from PLAYER_UPDATED events, and queue state from
+ * QUEUE_UPDATED / QUEUE_ITEMS_UPDATED.
+ *
+ * Those two queue event names were confirmed **on this household's server** (2.9.9, schema
+ * 31) rather than read off a branch, because the running server's `/api-docs` publishes its
+ * commands and its schemas but NOT its event names — there is no EventType enum to curl. The
+ * confirmation was done without making a sound, by sending `player_queues/clear` to an
+ * already-empty idle queue and watching what came back. If you need to re-confirm, do it the
+ * same way; do not start playback in a child's bedroom to find out.
  */
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
@@ -32,6 +40,13 @@ export interface MassClientOptions {
   token: string;
   /** Called whenever a player's state changes. Never poll instead of using this. */
   onPlayerUpdate?: (player: Player) => void;
+  /**
+   * Called whenever a queue changes: a new record, a track transition, a pause, a stop.
+   *
+   * This is the only way the server learns that track 2 started when track 1 ended. Nothing
+   * else in the system knows — the page only knows what the child pressed.
+   */
+  onQueueUpdate?: (queue: PlayerQueue) => void;
   onConnectionChange?: (connected: boolean) => void;
   commandTimeoutMs?: number;
 }
@@ -41,6 +56,7 @@ export class MassClient {
   #seq = 0;
   #pending = new Map<string, Pending>();
   #players = new Map<string, Player>();
+  #queues = new Map<string, PlayerQueue>();
   #info: ServerInfo | null = null;
   #closing = false;
   #backoff = 1000;
@@ -53,6 +69,9 @@ export class MassClient {
   get info(): ServerInfo | null { return this.#info; }
   get players(): Player[] { return [...this.#players.values()]; }
   player(id: string): Player | undefined { return this.#players.get(id); }
+  get queues(): PlayerQueue[] { return [...this.#queues.values()]; }
+  /** A player's own queue_id is its player_id, so this takes either. */
+  queue(id: string): PlayerQueue | undefined { return this.#queues.get(id); }
 
   // ── connection ────────────────────────────────────────────────
 
@@ -160,12 +179,36 @@ export class MassClient {
       this.#opts.onPlayerUpdate?.(p);
     } else if (event === "player_removed") {
       this.#players.delete(String(data));
+    } else if (event === "queue_updated" || event === "queue_items_updated" || event === "queue_added") {
+      // The payload is the WHOLE PlayerQueue, never a delta — so replace, never merge.
+      // Both names carry it; a clear emits both, one after the other. Subscribers are
+      // therefore required to be idempotent, and `listens.ts` is built that way.
+      const q = data as PlayerQueue;
+      if (!q?.queue_id) return;
+      this.#queues.set(q.queue_id, q);
+      this.#opts.onQueueUpdate?.(q);
     }
   }
 
   async #hydratePlayers(): Promise<void> {
     const all = await this.command<Player[]>("players/all");
     for (const p of all) this.#players.set(p.player_id, p);
+
+    // Queues are hydrated at connect for the same reason players are: after a reconnect the
+    // server would otherwise believe nothing is playing until the next event, and a track
+    // that started during the disconnect would never be attributed at all. This is a
+    // one-shot read on connect, NOT a poll.
+    //
+    // Deliberately not fatal: an MA that answers players/all but not player_queues/all is
+    // still an MA the child can play records on, and refusing to connect over a log we
+    // cannot write would trade a working crate for a tidy one.
+    try {
+      for (const q of await this.command<PlayerQueue[]>("player_queues/all")) {
+        if (q?.queue_id) this.#queues.set(q.queue_id, q);
+      }
+    } catch (e) {
+      console.warn(`[ma] queues not hydrated: ${(e as Error).message}`);
+    }
   }
 
   // ── commands ──────────────────────────────────────────────────

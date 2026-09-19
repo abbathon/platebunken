@@ -66,6 +66,9 @@ export interface Track {
   /** Position within the album. This is the numeral the child sees. */
   track_number?: number;
   duration?: number;
+  /** Present on a Track resolved inside a QueueItem; absent on album_tracks results. */
+  album?: { item_id: string; name: string; uri?: string } | null;
+  artists?: { item_id: string; name: string; uri?: string }[];
   metadata: MediaMetadata;
 }
 
@@ -89,3 +92,60 @@ export interface ServerInfo {
  *   curl -s http://<ma-host>:8095/api-docs/commands.json | jq -r '.[].command'
  */
 export const CLIENT_MIN_SERVER_SCHEMA = 31;
+
+/**
+ * One entry in a player's queue.
+ *
+ * Verified live against this household's Music Assistant **2.9.9, API schema 31** by reading
+ * `/api-docs/schemas.json` and by observing a real `queue_updated` payload on the wire.
+ *
+ * `media_item` is the resolved Track and is where every fact worth logging lives — its `uri`,
+ * its `track_number`, and its `album.uri`. `name` is a display string ("Artist - Title") and
+ * is NOT a parseable identity: an artist with a hyphen in the name splits wrong. Never derive
+ * identity from it.
+ */
+export interface QueueItem {
+  queue_item_id: string;
+  name: string;
+  duration?: number | null;
+  index?: number;
+  available?: boolean;
+  media_item?: Track | null;
+}
+
+/**
+ * A player's queue, as MA reports it.
+ *
+ * **The event payload is this entire object, not a delta.** Both `queue_updated` and
+ * `queue_items_updated` carry every field below, with `object_id` set to the queue_id —
+ * confirmed on the wire, not read off a branch. So a subscriber never merges; it replaces.
+ *
+ * `elapsed_time` is SECONDS and is a snapshot taken at `elapsed_time_last_updated` (a unix
+ * timestamp, also seconds). It does not tick on its own. Anything that needs the true
+ * position must add the wall-clock time since that stamp — and anything that needs to know
+ * how much of a track was actually heard is better off doing its own arithmetic between
+ * transitions, because this field resets when the track changes.
+ *
+ * NOTE: a `queue_id` is a *player_id* for a player's own queue. They are the same string.
+ */
+export interface PlayerQueue {
+  queue_id: string;
+  display_name: string;
+  active: boolean;
+  available: boolean;
+  /** Number of items in the queue, NOT an index. */
+  items: number;
+  state: PlaybackState;
+  current_index: number | null;
+  index_in_buffer: number | null;
+  /** Seconds into `current_item`, as of `elapsed_time_last_updated`. Does not tick. */
+  elapsed_time: number;
+  /** Unix seconds. */
+  elapsed_time_last_updated: number;
+  current_item: QueueItem | null;
+  next_item: QueueItem | null;
+  /** One continuous stream rather than discrete tracks. Track transitions still fire. */
+  flow_mode: boolean;
+  shuffle_enabled: boolean;
+  repeat_mode: string;
+}
