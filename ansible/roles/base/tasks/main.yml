@@ -1,0 +1,59 @@
+---
+# The machine itself: named, awake, and holding the few packages everything else needs.
+
+- name: Set the hostname
+  ansible.builtin.hostname:
+    name: "{{ kiosk_hostname }}"
+
+- name: Keep /etc/hosts agreeing with it
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s'
+    line: "127.0.1.1\t{{ kiosk_hostname }}"
+
+- name: Timezone
+  # timedatectl rather than community.general.timezone, so this playbook needs no Galaxy
+  # collections at all — one machine, one purpose, nothing to install before it runs.
+  ansible.builtin.command: "timedatectl set-timezone {{ kiosk_timezone }}"
+  when: kiosk_timezone is defined
+  changed_when: false
+
+- name: Packages
+  # `--check` on this task needs python3-apt present on the target; a real run auto-installs
+  # it. Tagged so a dry run can skip it and still exercise everything else.
+  tags: [packages]
+  ansible.builtin.apt:
+    name:
+      - network-manager
+      - alsa-utils
+      - squeezelite
+      - chromium
+      - x11-xserver-utils     # xset — §4.3 puts display blanking on the host, not the app
+      - unclutter             # hides the pointer; there is no mouse in this product
+      - curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: This appliance never sleeps
+  # It is mains-powered, permanently on, and in the audio path for the Klipsch route.
+  # A suspended laptop is a record that stops mid-song.
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    masked: true
+  loop:
+    - sleep.target
+    - suspend.target
+    - hibernate.target
+    - hybrid-sleep.target
+
+- name: Closing the lid does nothing
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/logind.conf
+    regexp: "^#?{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+  loop:
+    - { key: HandleLidSwitch, value: ignore }
+    - { key: HandleLidSwitchDocked, value: ignore }
+    - { key: HandleLidSwitchExternalPower, value: ignore }
+  notify: restart logind

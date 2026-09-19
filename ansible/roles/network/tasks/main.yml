@@ -1,0 +1,85 @@
+---
+# WiFi, and proving the router's reservation took.
+#
+# This role deliberately does NOT write a connection profile. The machine already has a
+# working WiFi connection, and Ansible reaches it over that connection — replacing the
+# profile of the link you are standing on is how a bedroom laptop goes offline until someone
+# walks to it with a keyboard. So: assert the connection exists, adjust only the properties
+# that protect the reservation, and never reactivate it mid-play.
+
+- name: NetworkManager is running
+  ansible.builtin.systemd:
+    name: NetworkManager
+    enabled: true
+    state: started
+
+- name: Which connection is actually carrying us
+  ansible.builtin.command: nmcli -t -f NAME,TYPE,DEVICE connection show --active
+  register: nm_active
+  changed_when: false
+  check_mode: false   # read-only; must still run during --check
+
+- name: There is a wifi connection to work with
+  ansible.builtin.assert:
+    that: nm_active.stdout is search('802-11-wireless')
+    fail_msg: >-
+      No active wifi connection. Create one at the machine
+      (`nmcli device wifi connect <ssid>`), then re-run. This role will not create one:
+      it is reached over that same link.
+
+- name: Name it
+  ansible.builtin.set_fact:
+    wifi_connection: "{{ nm_active.stdout_lines | select('search', '802-11-wireless') | first | split(':') | first }}"
+
+- name: Do not randomise the MAC
+  # The one property the router's reservation depends on. NetworkManager can randomise the
+  # wifi MAC per connection; a reservation keyed to a MAC then never matches, and the machine
+  # silently takes a different address each time. Currently unset on this host, which means
+  # the default applies — pinning it makes a future NM default change a non-event.
+  #
+  # Takes effect on the next activation, NOT now: reactivating would drop the link Ansible is
+  # using. A reboot or a manual `nmcli connection up` applies it.
+  ansible.builtin.command: >-
+    nmcli connection modify "{{ wifi_connection }}"
+    802-11-wireless.cloned-mac-address permanent
+    connection.autoconnect yes
+    connection.autoconnect-retries 0
+    ipv4.dhcp-send-hostname yes
+  register: nm_modify
+  changed_when: nm_modify.rc == 0
+
+- name: What address it has
+  ansible.builtin.command: "ip -4 -brief addr show {{ wifi_interface }}"
+  register: kiosk_addr
+  changed_when: false
+  check_mode: false   # read-only; must still run during --check
+
+- name: The reservation took
+  # A warning, not a failure: a lease may simply not have renewed, and failing here would
+  # stop the audio and kiosk roles over something cosmetic.
+  ansible.builtin.assert:
+    that: kiosk_expected_ip in kiosk_addr.stdout
+    success_msg: "Reserved address {{ kiosk_expected_ip }} is in use."
+    fail_msg: >-
+      Expected {{ kiosk_expected_ip }}, got "{{ kiosk_addr.stdout }}". Check the router's
+      reservation is keyed to this machine's permanent wifi MAC.
+  ignore_errors: true
+
+- name: Music Assistant is reachable from here
+  # The kiosk has zero WAN by design (§8), so this is the one reachability test that matters.
+  ansible.builtin.uri:
+    url: "http://{{ ma_host }}:{{ ma_port }}/info"
+    timeout: 5
+  register: ma_reachable
+  failed_when: false
+  changed_when: false
+  check_mode: false   # read-only; a dry run should still tell you if MA is reachable
+
+- name: Say so
+  ansible.builtin.debug:
+    # `status` is absent when the task is skipped, so it is never addressed bare — reading it
+    # unguarded is what made a dry run fail on a machine that was perfectly healthy.
+    msg: >-
+      Music Assistant at {{ ma_host }}:{{ ma_port }} —
+      {{ 'reachable' if ma_reachable.status | default(0) == 200
+         else 'NOT reachable (' ~ ma_reachable.status | default('no result') ~ ')' }}

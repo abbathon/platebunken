@@ -1,0 +1,22 @@
+---
+# Platebunken kiosk — the old laptop in KID_ROOM.
+#
+# Run:  ansible-playbook site.yml
+#       ansible-playbook site.yml --tags audio-list     # just show me this machine's ALSA devices
+#       ansible-playbook site.yml --check --diff        # dry run
+#
+# Nothing here sets a static address. The reservation lives on the router (UniFi), which stays
+# the single source of truth for the subnet; the network role's job is to make sure this machine
+# is RECOGNISABLE to that reservation, and to say so loudly when it is not.
+- name: Platebunken kiosk
+  hosts: kiosk
+  gather_facts: true
+  roles:
+    - role: base
+      tags: [base]
+    - role: network
+      tags: [network]
+    - role: audio
+      tags: [audio, audio-list]
+    - role: kiosk
+      tags: [kiosk]

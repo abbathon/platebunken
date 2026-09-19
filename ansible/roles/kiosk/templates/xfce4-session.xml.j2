@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Managed by Ansible — platebunken/ansible/roles/kiosk. -->
+<channel name="xfce4-session" version="1.0">
+  <property name="general" type="empty">
+    <!-- No logout dialog: it is text he cannot read, offering actions he must not take. -->
+    <property name="PromptOnLogout" type="bool" value="false"/>
+    <property name="SaveOnExit" type="bool" value="false"/>
+  </property>
+  <property name="shutdown" type="empty">
+    <property name="LockScreen" type="bool" value="false"/>
+  </property>
+</channel>

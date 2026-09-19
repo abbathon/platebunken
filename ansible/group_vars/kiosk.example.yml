@@ -1,0 +1,35 @@
+# Copy to group_vars/kiosk.yml and fill in. That file is GITIGNORED.
+# Everything environment-specific lives here: no address, SSID, hostname or player id in the repo.
+
+# ── identity ─────────────────────────────────────────────────────────
+kiosk_hostname: platebunken
+kiosk_user: CHANGEME          # the login that runs the XFCE session
+kiosk_timezone: Europe/Oslo
+
+# ── network ──────────────────────────────────────────────────────────
+# The address is reserved on the router (UniFi), not set here. This value is used only to
+# CHECK that the reservation took, and to show it in the parent's settings screen.
+kiosk_expected_ip: 10.0.0.0
+wifi_ssid: CHANGEME
+wifi_interface: wlan0
+
+# ── Music Assistant ──────────────────────────────────────────────────
+ma_host: musicassistant.example.lan
+ma_port: 8095
+
+# ── audio: the phono-out question ────────────────────────────────────
+# Run `ansible-playbook site.yml --tags audio-list` to print this machine's real ALSA devices,
+# then paste the one you want here. The analog jack is usually an `analog-stereo` sink on the
+# built-in card (`hw:CARD=PCH`); the Klipsch over USB appears as its own card.
+squeezelite_output_device: "hw:CARD=PCH,DEV=0"
+# ALSA mixer control squeezelite drives, so Music Assistant's volume (and the ceiling) is real
+# on this machine rather than a number in a web page. `amixer scontrols` lists them.
+squeezelite_mixer: "Master"
+squeezelite_player_name: platebunken-kiosk
+
+# ── the page the kiosk opens ─────────────────────────────────────────
+kiosk_url: "http://localhost:5199/"
+
+# ── blanking (§4.3 — the host owns this, never the app) ──────────────
+kiosk_blank_seconds: 300
+kiosk_dpms_off_seconds: 300

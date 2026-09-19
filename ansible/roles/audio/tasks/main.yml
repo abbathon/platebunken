@@ -1,0 +1,68 @@
+---
+# The laptop as a Music Assistant player (ARCHITECTURE.md §7.2), so audio can leave this
+# machine's own jack instead of going to the Sonos.
+#
+# This requires the **slimproto provider to be enabled in Music Assistant**, on the HA host.
+# Ansible cannot do that from here; it is a toggle in MA's own settings. Without it MA never
+# sees this player and nothing below has any effect.
+
+# ── `--tags audio-list`: just tell me what this machine's outputs are called ──
+- name: ALSA playback devices (for choosing squeezelite_output_device)
+  ansible.builtin.command: aplay -L
+  register: alsa_devices
+  changed_when: false
+  tags: [audio-list]
+  check_mode: false   # read-only; must still run during --check
+
+- name: Show them
+  ansible.builtin.debug:
+    msg: "{{ alsa_devices.stdout_lines }}"
+  tags: [audio-list]
+
+- name: Mixer controls (for choosing squeezelite_mixer)
+  ansible.builtin.command: amixer scontrols
+  register: alsa_mixers
+  changed_when: false
+  failed_when: false
+  tags: [audio-list]
+  check_mode: false   # read-only; must still run during --check
+
+- name: Show them
+  ansible.builtin.debug:
+    msg: "{{ alsa_mixers.stdout_lines }}"
+  tags: [audio-list]
+
+# ── the player itself ──
+- name: The packaged squeezelite service is not the one we run
+  # Debian ships its own unit driven by /etc/default/squeezelite. Ours states the output
+  # device and mixer explicitly in one readable file, so leaving both enabled would mean two
+  # players fighting for the same sound card.
+  ansible.builtin.systemd:
+    name: squeezelite
+    enabled: false
+    state: stopped
+  failed_when: false
+
+- name: The kiosk user can reach the sound card
+  ansible.builtin.user:
+    name: "{{ kiosk_user }}"
+    groups: audio
+    append: true
+
+- name: Our squeezelite unit
+  ansible.builtin.template:
+    src: squeezelite.service.j2
+    dest: /etc/systemd/system/platebunken-squeezelite.service
+    mode: "0644"
+  notify: restart squeezelite
+
+- name: Enabled and running
+  # Skipped under --check: the unit file is not written in a dry run, so systemd has nothing
+  # to look up and the task fails on a machine that is perfectly fine. The dry run's job is
+  # the diff above, which shows exactly what would be installed.
+  when: not ansible_check_mode
+  ansible.builtin.systemd:
+    name: platebunken-squeezelite
+    enabled: true
+    state: started
+    daemon_reload: true

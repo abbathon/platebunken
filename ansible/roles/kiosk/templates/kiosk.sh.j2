@@ -1,0 +1,40 @@
+#!/bin/sh
+# Managed by Ansible — platebunken/ansible/roles/kiosk. Hand edits will be overwritten.
+
+# §4.3: the HOST owns blanking, not the app. The page implements no idle timer, no dim, no
+# screensaver, no clock. X's own blanking hands the waking keypress on to the page, so the
+# first press both lights the screen and does what he meant — a screensaver or a locker
+# swallows it, and a press that does nothing is the disappointment principle 1 is about.
+xset s blank
+xset s {{ kiosk_blank_seconds }}
+xset dpms {{ kiosk_blank_seconds }} {{ kiosk_blank_seconds }} {{ kiosk_dpms_off_seconds }}
+
+# §10 says a Chromium crash is "~2 s black, then the crate". Make that literally true: a
+# black root window means the gap shows nothing rather than a desktop he could poke at.
+xsetroot -solid black
+
+# There is no mouse in this product. Hide the pointer rather than leaving it parked on a sleeve.
+unclutter -idle 0 -root &
+
+# Chromium's "didn't shut down correctly" bar would sit over the crate after any power cut,
+# and the flags that suppressed it were removed from source. Patch the profile instead.
+PREFS="$HOME/.config/chromium/Default/Preferences"
+if [ -f "$PREFS" ]; then
+  sed -i 's/"exited_cleanly":false/"exited_cleanly":true/; s/"exit_type":"[^"]*"/"exit_type":"Normal"/' "$PREFS"
+fi
+
+# Restart always, with no rate limit. systemd gives up after ~5 rapid restarts by default,
+# which is the failure mode that looks like "the screen just went black and stayed black".
+while true; do
+  chromium \
+    --kiosk \
+    --app="{{ kiosk_url }}" \
+    --start-fullscreen \
+    --noerrdialogs \
+    --disable-infobars \
+    --disable-session-crashed-bubble \
+    --disable-features=OverscrollHistoryNavigation,TouchpadOverscrollHistoryNavigation,TranslateUI \
+    --autoplay-policy=no-user-gesture-required \
+    --check-for-update-interval=31536000
+  sleep 2
+done

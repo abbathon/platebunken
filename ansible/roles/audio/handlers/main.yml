@@ -1,0 +1,9 @@
+---
+- name: restart squeezelite
+  # Guarded for the same reason as the task that enables it: under --check the unit file was
+  # never written, so the handler fires at the end of the play and fails on a healthy machine.
+  when: not ansible_check_mode
+  ansible.builtin.systemd:
+    name: platebunken-squeezelite
+    state: restarted
+    daemon_reload: true

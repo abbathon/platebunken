@@ -1,0 +1,9 @@
+# Copy to inventory.yml and fill in. inventory.yml is GITIGNORED and must never be committed:
+# it holds a hostname and an address, which docs/ARCHITECTURE.md's data rule forbids in the repo.
+kiosk:
+  hosts:
+    platebunken:
+      # The address the router reserves for this machine. See group_vars/kiosk.yml.
+      ansible_host: 10.0.0.0
+      ansible_user: CHANGEME
+      ansible_become: true

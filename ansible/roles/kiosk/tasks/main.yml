@@ -1,0 +1,113 @@
+---
+# Chromium on the XFCE session.
+#
+# ARCHITECTURE.md §8 specified greetd + cage on Wayland. The machine was built with XFCE, so
+# this follows the machine and §8 has been rewritten to match rather than left contradicting
+# it. One consequence is a gain: XFCE on Debian is X11, and §4.3's blanking plan is `xset`,
+# which is X11-only. Under cage there would have been no xset to run.
+
+- name: Where the kiosk user lives
+  ansible.builtin.set_fact:
+    kiosk_home: "/home/{{ kiosk_user }}"
+
+- name: Directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ kiosk_user }}"
+    group: "{{ kiosk_user }}"
+    mode: "0755"
+  loop:
+    - "{{ kiosk_home }}/.local/bin"
+    - "{{ kiosk_home }}/.config/autostart"
+    - "{{ kiosk_home }}/.config/xfce4/xfconf/xfce-perchannel-xml"
+
+- name: The launcher
+  ansible.builtin.template:
+    src: kiosk.sh.j2
+    dest: "{{ kiosk_home }}/.local/bin/platebunken-kiosk.sh"
+    owner: "{{ kiosk_user }}"
+    group: "{{ kiosk_user }}"
+    mode: "0755"
+
+- name: Autostart it with the session
+  ansible.builtin.template:
+    src: platebunken-kiosk.desktop.j2
+    dest: "{{ kiosk_home }}/.config/autostart/platebunken-kiosk.desktop"
+    owner: "{{ kiosk_user }}"
+    group: "{{ kiosk_user }}"
+    mode: "0644"
+
+- name: No screensaver, and above all no locker
+  # Same tag as the base role's install: apt needs python3-apt on the target to run under
+  # --check, so a dry run can skip both and still exercise everything else.
+  tags: [packages]
+  # §4.3 is explicit: never a screensaver program and never a locking one. A locker in front
+  # of a four-year-old who cannot read is a device that has stopped existing. Purged rather
+  # than disabled, so a later desktop update cannot quietly bring one back.
+  ansible.builtin.apt:
+    name:
+      - xfce4-screensaver
+      - light-locker
+      - xscreensaver
+    state: absent
+    purge: true
+
+# XFCE settings are written as xfconf XML rather than driven with `xfconf-query`, which
+# needs a live D-Bus session and therefore cannot work over SSH. These apply at next login.
+- name: XFCE settings for the kiosk session
+  ansible.builtin.template:
+    src: "{{ item }}.xml.j2"
+    dest: "{{ kiosk_home }}/.config/xfce4/xfconf/xfce-perchannel-xml/{{ item }}.xml"
+    owner: "{{ kiosk_user }}"
+    group: "{{ kiosk_user }}"
+    mode: "0644"
+  loop:
+    # Clears every XFCE and xfwm shortcut: Alt+F4, Alt+Tab, Super, Ctrl+Alt+Del, workspace
+    # switching. Four verbs exist in this product and none of them are these.
+    - xfce4-keyboard-shortcuts
+    - xfce4-power-manager
+    - xfce4-session
+
+- name: System drop-in directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /etc/X11/xorg.conf.d
+    - /etc/chromium/policies/managed
+
+- name: No VT switching, no zap
+  ansible.builtin.template:
+    src: xorg-10-kiosk.conf.j2
+    dest: /etc/X11/xorg.conf.d/10-kiosk.conf
+    mode: "0644"
+
+- name: Chromium managed policy
+  # §8: DeveloperToolsAvailability 2, URLBlocklist ["*"] + an allowlist of exactly one page.
+  # ForceEphemeralProfiles stays FALSE on purpose — an ephemeral profile wipes the cover
+  # cache on every reboot, and warm covers are what keep a held-down arrow key from showing
+  # black squares.
+  ansible.builtin.template:
+    src: chromium-policy.json.j2
+    dest: /etc/chromium/policies/managed/platebunken.json
+    mode: "0644"
+
+- name: lightdm has a drop-in directory
+  # Not present on a stock trixie XFCE install — the copy below silently did nothing without it.
+  ansible.builtin.file:
+    path: /etc/lightdm/lightdm.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Log the kiosk user straight into the session
+  # No greeter: this machine has one purpose and nobody types a password at it.
+  ansible.builtin.copy:
+    dest: /etc/lightdm/lightdm.conf.d/50-platebunken.conf
+    content: |
+      # Managed by Ansible — platebunken/ansible/roles/kiosk.
+      [Seat:*]
+      autologin-user={{ kiosk_user }}
+      autologin-session=xfce
+    mode: "0644"

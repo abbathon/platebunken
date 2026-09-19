@@ -1,0 +1,12 @@
+---
+# Blanking, per §4.3. The host owns this; the app implements no idle timer at all.
+kiosk_blank_seconds: 300
+kiosk_dpms_off_seconds: 300
+
+# Disable Ctrl+Alt+F1..F12 (VT switching).
+#
+# This is the strongest child-lock on the machine AND the one that can lock YOU out: with
+# autologin, no sudo for the session user and no Tailscale yet (§8), SSH over wifi becomes
+# the only way in. If wifi or sshd breaks you are recovering from GRUB or a live USB.
+# Set false while the machine is still being built; true once there is a second door.
+kiosk_lock_vt: true

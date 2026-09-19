@@ -1,0 +1,31 @@
+# Managed by Ansible — platebunken/ansible/roles/audio. Hand edits will be overwritten.
+[Unit]
+Description=Platebunken — Music Assistant player (squeezelite)
+After=network-online.target sound.target
+Wants=network-online.target
+# Start rate-limiting is on by default and permanently gives up after ~5 rapid restarts,
+# which is exactly the failure that looks like "the music just stopped working".
+#
+# This belongs in [Unit], NOT [Service]. It sat in [Service] first and systemd logged
+# `Unknown key 'StartLimitIntervalSec' in section [Service], ignoring` — the protection was
+# silently absent while the comment next to it claimed otherwise. systemd 229 moved it.
+StartLimitIntervalSec=0
+
+[Service]
+# -o  the ALSA device: THIS is the phono-out switch. Analog jack vs USB Klipsch.
+# -V  the mixer control, so Music Assistant's volume moves real hardware — which is what
+#     makes PRODUCT.md's volume ceiling a safety measure rather than a number in a web page.
+# -s  point at the server explicitly; discovery is one more thing to fail in a bedroom.
+ExecStart=/usr/bin/squeezelite \
+  -n {{ squeezelite_player_name }} \
+  -s {{ ma_host }} \
+  -o {{ squeezelite_output_device }} \
+  -V {{ squeezelite_mixer }} \
+  -C 5
+Restart=always
+RestartSec=3
+User={{ kiosk_user }}
+SupplementaryGroups=audio
+
+[Install]
+WantedBy=multi-user.target

@@ -33,3 +33,8 @@ __pycache__/
 
 # A dump of a private music library — never commit.
 prototypes/crate/public/library.json
+
+# Ansible inventory and vars — hostname, address, SSID, PSK. Never commit.
+ansible/inventory.yml
+ansible/group_vars/kiosk.yml
+ansible/*.retry

@@ -1,0 +1,9 @@
+# Managed by Ansible — platebunken/ansible/roles/kiosk. Hand edits will be overwritten.
+Section "ServerFlags"
+    # Ctrl+Alt+F1..F12 drops to a text console. A four-year-old mashing a laptop keyboard
+    # WILL find it eventually, and a console is a device that has stopped existing as far as
+    # he is concerned — there is no way back that he can perform.
+    Option "DontVTSwitch" "{{ 'true' if kiosk_lock_vt else 'false' }}"
+    # Ctrl+Alt+Backspace kills the X server outright.
+    Option "DontZap" "true"
+EndSection

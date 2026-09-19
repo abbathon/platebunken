@@ -511,6 +511,20 @@ and wind the volume down — a recovery path, and an automation hook. The front 
 
 ### 7.2 The laptop as a Music Assistant player
 
+**As of the Ansible work this is not yet true.** Music Assistant knows no player on the laptop:
+the providers in play are `sonos`, `chromecast`, `airplay`, `sendspin` and the universal
+players, and `PLAYER_ID_PRIMARY` is a Sonos Play:1. Two separate things must both hold before
+the laptop has an output at all — **squeezelite running** (`ansible/roles/audio`) and **the
+slimproto provider enabled in Music Assistant**, which is a toggle on the HA host that Ansible
+cannot reach. The parent's settings screen says so rather than showing a list with a missing
+row.
+
+squeezelite is the chosen mechanism over snapcast (a server/client pair for one speaker in one
+room) and over MA's `sendspin` browser player (which would put playback back inside the page
+that §3 deliberately moved it out of, and die with Chromium). It also takes the ALSA device as
+an argument, which is what makes "phono out" a setting rather than a rewiring: the built-in
+analog jack and the USB Klipsch are two device names, and `--tags audio-list` prints both.
+
 >  **Verified on the running server.** Both `sendspin` and `local_audio` are present and
 > **enabled** as player providers on 2.9.9 — along with `sonos`, `airplay`, `chromecast`,
 > `dlna`, `snapcast`, `universal_group`, `sync_group` and `universal_player`. So the
@@ -566,7 +580,19 @@ Sendspin web player's reload survival. `research/05` §6.5 lists six such items;
 
 ## 8. Kiosk
 
-Debian minimal → greetd `[initial_session]` → **cage** → Chromium `--kiosk --app=`.
+Debian → **XFCE** (X11) → autologin → Chromium `--kiosk --app=`, configured by `ansible/`.
+
+**This reverses greetd + cage on Wayland**, which is what this section said until the machine
+was actually built. The parent built it on XFCE, and the machine wins over the plan. The
+reversal pays for itself: §4.3 puts display blanking on the host via `xset s blank` + `xset
+dpms`, and **`xset` is X11-only** — under cage there would have been no `xset` to run, and the
+blanking argument that section rests on had no implementation. It also settles the Wayland vs
+X11 question §12 left open for the touch-quality test: it is X11.
+
+What is kept from the cage plan: Chromium restarting always with **no start rate limit**, the
+`exited_cleanly` patch, no incognito, and the udev input lock. XFCE costs a desktop session
+this product does not use; it buys a surface to debug the machine from, which matters while it
+is still being built. Revisit only if that session proves to cost something measurable.
 
 - **Open question — keyboard-first conflicts with the input lock.** The plan was a
   `LIBINPUT_IGNORE_DEVICE="1"` udev rule on the keyboard and trackpad, which is the real
@@ -591,6 +617,23 @@ Debian minimal → greetd `[initial_session]` → **cage** → Chromium `--kiosk
   Policies: `DeveloperToolsAvailability: 2`, `URLBlocklist: ["*"]` + `URLAllowlist`.
 - **Never incognito** — it wipes the cover cache every reboot.
 - Parent's way in: **SSH + Tailscale.** There is no key combo; the keyboard is disabled.
+- **No screensaver and no locker** — purged, not disabled, so a desktop update cannot bring one
+  back. XFCE's own power manager is told not to blank either: two things owning blanking means
+  neither is predictable, and §4.3 gives the job to `xset`.
+
+**Configuration is Ansible** (`ansible/`), run from the dev Mac. Four roles — base, network,
+audio, kiosk. `inventory.yml` and `group_vars/kiosk.yml` hold the hostname, address, SSID and
+PSK and are gitignored; the repo carries only the `.example` templates.
+
+**The address is a DHCP reservation on the router, not a static address on the host.** The
+router stays the single source of truth for the subnet, and a mistyped gateway cannot lock
+anyone out of a headless machine in a bedroom. The one thing that makes that work lives in
+`roles/network`: **`cloned-mac-address=permanent`**. NetworkManager randomises the WiFi MAC per
+connection by default, and a reservation keyed to a MAC then never matches — the machine takes
+a lease under a new identity each time and silently gets a different address. It presents as a
+broken reservation and cannot be fixed from the router. The parent's settings screen shows the
+reserved address next to the one the machine actually has, because a mismatch is otherwise
+invisible.
 
 **UniFi:** the kiosk gets **zero WAN access**. Allow LAN to the MA host and the speakers, deny
 internet outright. Stronger than allowlisting cloud domains, and it is why the cloud Sonos API was
