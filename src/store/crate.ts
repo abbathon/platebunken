@@ -268,13 +268,19 @@ export function recentlyRejected(db: DatabaseSync, limit = 10): QueueEntry[] {
 }
 
 /**
+ * `at` is when this release happened, and it defaults to now. It is a parameter because the
+ * trickle (src/server/trickle.ts) decides whether a release is due by comparing TODAY against
+ * the newest `released_at`, and it cannot do that honestly if its own clock and this one are
+ * different clocks. That mismatch is not theoretical: it made two of the trickle's tests pass
+ * for the wrong reason, and the "already released today" path was never exercised at all.
+ *
  * Release up to `limit` approved albums into the crate, oldest approval first, assigning
  * each the next position. Call it once a day with NEW_SHELF_TRICKLE_PER_DAY; call it with
  * the full count when seeding the initial crate, where there is nothing to trickle into.
  *
  * Returns the albums that became visible.
  */
-export function release(db: DatabaseSync, profileId: string, limit: number): StoredAlbum[] {
+export function release(db: DatabaseSync, profileId: string, limit: number, at: string = now()): StoredAlbum[] {
   if (limit <= 0) return [];
   const due = db.prepare(
     // rowid breaks the tie, not uri: a batch approved inside the same millisecond must
@@ -284,7 +290,7 @@ export function release(db: DatabaseSync, profileId: string, limit: number): Sto
   ).all(profileId, limit) as { uri: string }[];
   if (due.length === 0) return [];
 
-  const t = now();
+  const t = at;
   const out: StoredAlbum[] = [];
   db.exec("BEGIN");
   try {

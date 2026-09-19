@@ -15,6 +15,7 @@
 import { createServer } from "node:http";
 import { openStore } from "../store/db.ts";
 import { ensureProfile, counts } from "../store/crate.ts";
+import { CHECK_INTERVAL_MS, runTrickle } from "./trickle.ts";
 import { config, canPlay } from "./config.ts";
 import { createApp } from "./app.ts";
 import { closeMa, restoreTarget } from "./speaker.ts";
@@ -60,7 +61,34 @@ function announce(): void {
   }
 }
 
-server.listen(config.port, config.host, announce);
+/**
+ * The new shelf (§4.1).
+ *
+ * Checked at boot and then every half hour, because the process is expected to run for weeks
+ * and a daily job that only runs at startup is a daily job that runs once. `runTrickle` decides
+ * whether anything is actually due; almost every call is a no-op and says nothing.
+ *
+ * `unref()` so this timer never holds the process open during shutdown — the crate is mid-write
+ * often enough that an extra half hour of SIGTERM is a real cost.
+ */
+function trickle(): void {
+  const c = counts(db, config.profile.id);
+  const s = loadSettings(db);
+  const out = runTrickle(db, {
+    profileId: config.profile.id,
+    perDay: s.tricklePerDay,
+    waiting: c.waitingToRelease,
+  });
+  if (out.length) {
+    console.log(`[trickle] the crate is now ${counts(db, config.profile.id).inCrate} albums`);
+  }
+}
+
+server.listen(config.port, config.host, () => {
+  announce();
+  trickle();
+  setInterval(trickle, CHECK_INTERVAL_MS).unref();
+});
 
 /**
  * Shut down on a signal rather than being killed.
