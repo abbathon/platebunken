@@ -3,6 +3,7 @@
  *
  * Boundaries this file exists to hold, from ARCHITECTURE.md §5.1:
  *   /api/crate            the store, and only the store. Never Music Assistant.
+ *   /admin, /api/review   the parent's review queue (§6). The ONLY way into the crate.
  *   /api/speaker/play     a uri the page already had. Never a search, never a browse.
  *   /api/speaker/players  the one call that asks MA what it has got — a PARENT surface.
  *   /imageproxy/*         cover bytes, so the page only ever talks to its own origin.
@@ -17,6 +18,8 @@ import { staticServer } from "./static.ts";
 import { wireCrate } from "./crate.ts";
 import { recordPlay } from "../store/crate.ts";
 import { save, wireSettings } from "./settings.ts";
+import { decide, reopen, wireReview } from "./review.ts";
+import { ADMIN_HTML } from "./admin.ts";
 import * as speaker from "./speaker.ts";
 
 /**
@@ -105,6 +108,47 @@ export function createApp(db: DatabaseSync) {
         return json(res, 200, {
           ok: recordPlay(db, profileId, uri, Number.isFinite(trackN) ? trackN : null),
         });
+      }
+
+      /* ── the review queue (§6) ────────────────────────────────────────
+       * A parent surface, on a phone, once a day. It is the only path into the child's
+       * crate, and the gate it goes through is `approve()` in the store — not anything here.
+       */
+      if (route === "/admin" && (method === "GET" || method === "HEAD")) {
+        res.statusCode = 200;
+        res.setHeader("content-type", "text/html; charset=utf-8");
+        // Never cached. The queue is the whole point of the page, and a phone showing
+        // yesterday's copy would have the parent deciding on albums already decided.
+        res.setHeader("cache-control", "no-store");
+        // This page is not for the child's browser and not for anyone's index.
+        res.setHeader("x-robots-tag", "noindex, nofollow");
+        res.setHeader("referrer-policy", "no-referrer");
+        return void res.end(method === "HEAD" ? "" : ADMIN_HTML);
+      }
+
+      if (route === "/api/review" && method === "GET") {
+        return json(res, 200, wireReview(db));
+      }
+
+      if (route === "/api/review/decide" && method === "POST") {
+        const payload = await body(req);
+        const uri = String(payload.uri ?? "");
+        const decision = String(payload.decision ?? "");
+        if (!uri) return json(res, 400, { ok: false, error: "no album uri" });
+        if (decision !== "approved" && decision !== "rejected") {
+          return json(res, 400, { ok: false, error: "decision must be approved or rejected" });
+        }
+        const out = decide(db, profileId, uri, decision);
+        // 200 either way: `ok:false` with a reason is the page's own error path, and a
+        // rejected decision is a normal answer rather than a broken request.
+        return json(res, 200, out);
+      }
+
+      if (route === "/api/review/reopen" && method === "POST") {
+        const payload = await body(req);
+        const uri = String(payload.uri ?? "");
+        if (!uri) return json(res, 400, { ok: false, error: "no album uri" });
+        return json(res, 200, reopen(db, uri));
       }
 
       /* ── settings ─────────────────────────────────────────────────────── */
