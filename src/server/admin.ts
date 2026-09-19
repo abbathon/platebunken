@@ -23,7 +23,27 @@
  * explicit that a person decides, because the most notorious record in the genre passes every
  * automated theme filter.
  */
-export const ADMIN_HTML = `<!doctype html>
+/**
+ * The same four digits that guard the settings screen on the device.
+ *
+ * **A child gate, not security**, and this file must not be read as claiming otherwise: the
+ * code is compared in the page and is readable by anyone who opens the source. It stops a
+ * four-year-old who reaches this URL from the kiosk browser, which is the actual risk — the
+ * kiosk is locked to this origin, so /admin is one address bar away from the crate, and the
+ * two buttons on it decide what music a child is allowed.
+ *
+ * Anyone else on the LAN is not the threat model and never was. The real boundaries are the
+ * kiosk lockdown (§8), the network, and the fact that no credential reaches a page.
+ *
+ * The code comes from `config.gatePin` so both parent surfaces share one value.
+ */
+export function adminHtml(gatePin: string): string {
+  // JSON.stringify, not quotes: the pin comes from the environment and must not be able to
+  // end the string literal it is pasted into.
+  return ADMIN_HTML.replace("__GATE_PIN__", JSON.stringify(String(gatePin)));
+}
+
+const ADMIN_HTML = `<!doctype html>
 <html lang="no">
 <head>
 <meta charset="utf-8">
@@ -39,6 +59,11 @@ export const ADMIN_HTML = `<!doctype html>
     --radius: 14px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  /* The hidden attribute is only display:none in the UA stylesheet, so ANY author display
+     rule beats it. .gate is display:grid, so hiding it did nothing and the gate stayed on
+     screen behind the unlocked queue. This is the guard, and it is why every hidden element
+     here is trustworthy. (No backticks in this file — see the header.) */
+  [hidden] { display: none !important; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font: 16px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -115,11 +140,31 @@ export const ADMIN_HTML = `<!doctype html>
   .shelf button.yes { background: #4a7d45; border-color: #5f9a58; }
   .ok { background: #1e2b1c; border: 1px solid var(--yes); color: #c9e3c1;
         padding: 11px 13px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
+  .gate { min-height: 82vh; display: grid; place-content: center; justify-items: center; gap: 18px; }
+  .gate p { color: var(--dim); font-size: 14px; margin: 0; }
+  .dots { display: flex; gap: 11px; }
+  .dot { width: 14px; height: 14px; border-radius: 999px; border: 2px solid var(--line); }
+  .dot[data-on="1"] { background: var(--ink); border-color: transparent; }
+  .dots.bad .dot { border-color: var(--hot); animation: shake .3s; }
+  @keyframes shake { 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+  .pad { display: grid; grid-template-columns: repeat(3, 76px); gap: 12px; }
+  .pad button {
+    width: 76px; height: 76px; border-radius: 999px; padding: 0;
+    font-family: inherit; font-weight: 700; font-size: 26px; line-height: 1;
+  }
+  .pad span { display: block; }
   .err { background: #3a2220; border: 1px solid var(--hot); color: #f0c4bc;
          padding: 11px 13px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
 </style>
 </head>
 <body>
+<section class="gate" id="gate">
+  <h1>Platebunken</h1>
+  <p id="gate-label">Kode</p>
+  <div class="dots" id="dots"></div>
+  <div class="pad" id="pad"></div>
+</section>
+<div id="app" hidden>
 <header><h1>Platebunken</h1><span class="count" id="count"></span></header>
 <div id="err"></div>
 <div id="note"></div>
@@ -139,6 +184,7 @@ export const ADMIN_HTML = `<!doctype html>
   <h2>Nylig avvist</h2>
   <div id="rejected" class="card"></div>
 </section>
+</div>
 
 <script>
 (function () {
@@ -384,10 +430,73 @@ export const ADMIN_HTML = `<!doctype html>
       });
   }
 
-  load();
+  /* ── the child gate ──────────────────────────────────────────────
+   * Four digits, the same ones as the settings screen on the device. It stops a four-year-old
+   * who reaches this URL from the kiosk browser; it is not security and is not offered as any.
+   *
+   * Remembered for the tab only (sessionStorage), so a reload or the phone being reopened does
+   * not ask again, and a fresh visit does. Wrapped in try/catch because a browser with storage
+   * blocked must still be able to review the queue.
+   */
+  var PIN = __GATE_PIN__;
+  var KEY = "platebunken.admin.unlocked";
+  var gate = document.getElementById("gate");
+  var app = document.getElementById("app");
+  var dots = document.getElementById("dots");
+  var pad = document.getElementById("pad");
+  var entry = "";
+
+  function remember(v) {
+    try { if (v) sessionStorage.setItem(KEY, "1"); else sessionStorage.removeItem(KEY); } catch (e) { /* storage blocked */ }
+  }
+  function remembered() {
+    try { return sessionStorage.getItem(KEY) === "1"; } catch (e) { return false; }
+  }
+
+  function paintDots(bad) {
+    dots.textContent = "";
+    dots.classList.toggle("bad", !!bad);
+    for (var i = 0; i < 4; i++) {
+      var d = el("span", "dot");
+      d.dataset.on = i < entry.length ? "1" : "0";
+      dots.appendChild(d);
+    }
+  }
+
+  function unlock() {
+    gate.hidden = true;
+    app.hidden = false;
+    remember(true);
+    load();
+  }
+
+  function press(digit) {
+    if (entry.length >= 4) return;
+    entry += digit;
+    paintDots(false);
+    if (entry.length < 4) return;
+    var ok = entry === PIN;
+    setTimeout(function () {
+      if (ok) { unlock(); return; }
+      entry = "";
+      paintDots(true);
+    }, 140);
+  }
+
+  ["1","2","3","4","5","6","7","8","9","","0",""].forEach(function (d) {
+    if (!d) { pad.appendChild(el("span")); return; }
+    var b = el("button", null, d);
+    b.setAttribute("aria-label", d);
+    b.addEventListener("click", function () { press(d); });
+    pad.appendChild(b);
+  });
+  paintDots(false);
+
+  if (remembered()) unlock();
+
   // The phone is usually reopened rather than refreshed.
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden) load();
+    if (!document.hidden && !app.hidden) load();
   });
 })();
 </script>

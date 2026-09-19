@@ -15,8 +15,11 @@ import { MARKS, markById, type MarkId } from "./marks";
  * four-year-old and nobody else. The actual boundary is elsewhere and always was: the kiosk
  * lockdown (§8), and the fact that no credential for Music Assistant, Qobuz or the store is ever
  * in this page. Do not let this grow into something anyone is asked to trust.
+ *
+ * The digits come from the server (`GATE_PIN`), so this screen and the review queue at /admin
+ * cannot drift to different codes. The fallback is for a page served by an older server.
  */
-const GATE_PIN = "1234";
+const GATE_PIN_FALLBACK = "1234";
 
 export type Lang = "nb" | "en";
 
@@ -39,6 +42,8 @@ export interface Settings {
   sources: { listenbrainz: boolean; lastfm: boolean; deezer: boolean; charts: boolean };
   /** Which of those the server can actually act on. Absent means assume all, for old servers. */
   sourcesAvailable?: Partial<Record<"listenbrainz" | "lastfm" | "deezer" | "charts", boolean>>;
+  /** The child gate's digits, from the server so the two parent surfaces share one code. */
+  gatePin?: string;
   tricklePerDay: number;
 }
 
@@ -181,7 +186,7 @@ function gate(ctx: AdminContext): HTMLElement {
     entry += d;
     paint();
     if (entry.length === 4) {
-      const ok = entry === GATE_PIN;
+      const ok = entry === (ctx.settings.gatePin || GATE_PIN_FALLBACK);
       setTimeout(() => { if (!ok) { entry = ""; paint(true); } ctx.onUnlock(ok); }, 160);
     }
   };

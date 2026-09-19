@@ -123,5 +123,10 @@ export function wireSettings(db: DatabaseSync) {
      * rather than as a control that quietly does nothing.
      */
     sourcesAvailable: SOURCE_AVAILABLE,
+    /**
+     * The child gate's four digits, so the page does not carry its own copy. Sending it is not
+     * a leak: it was already compiled into the bundle, and it is a child gate — see config.ts.
+     */
+    gatePin: config.gatePin,
   };
 }

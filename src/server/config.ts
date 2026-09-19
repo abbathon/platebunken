@@ -77,6 +77,21 @@ export const config = {
   kioskIp: str("KIOSK_IP") || null,
 
   /**
+   * The four digits in front of the parent surfaces — the settings screen on the device, and
+   * the review queue at /admin.
+   *
+   * **A child gate, not security**, and it must not be mistaken for one: it is compared in
+   * front-end JavaScript and it is readable by anyone who opens the page source. It stops a
+   * four-year-old. The real boundaries are elsewhere and always were — the kiosk lockdown
+   * (§8), the LAN, and the fact that no credential for Music Assistant, Qobuz, ListenBrainz or
+   * the store is ever in a page.
+   *
+   * It lives here so the two surfaces cannot drift to different codes, which is what happens
+   * when a constant is written down twice.
+   */
+  gatePin: str("GATE_PIN", "1234"),
+
+  /**
    * ListenBrainz submission. Empty disables it entirely — silent, not broken.
    *
    * The token is read HERE and never leaves the server, exactly like `MA_TOKEN`: the page must

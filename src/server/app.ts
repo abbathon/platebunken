@@ -19,7 +19,7 @@ import { wireCrate } from "./crate.ts";
 import { recordPlay } from "../store/crate.ts";
 import { save, wireSettings } from "./settings.ts";
 import { decide, releaseNow, reopen, wireReview } from "./review.ts";
-import { ADMIN_HTML } from "./admin.ts";
+import { adminHtml } from "./admin.ts";
 import * as speaker from "./speaker.ts";
 
 /**
@@ -123,7 +123,7 @@ export function createApp(db: DatabaseSync) {
         // This page is not for the child's browser and not for anyone's index.
         res.setHeader("x-robots-tag", "noindex, nofollow");
         res.setHeader("referrer-policy", "no-referrer");
-        return void res.end(method === "HEAD" ? "" : ADMIN_HTML);
+        return void res.end(method === "HEAD" ? "" : adminHtml(config.gatePin));
       }
 
       if (route === "/api/review" && method === "GET") {
