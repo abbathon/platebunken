@@ -48,6 +48,18 @@ export const SIMILAR_MAX_AGE_DAYS = 30;
 
 export interface CurateOptions {
   profileId: string;
+  /**
+   * Which suggestion sources the parent has switched on (Settings → Kilder).
+   *
+   * Passed in rather than read here, so the worker stays testable without a settings table and
+   * so there is one place — `SOURCE_AVAILABLE` in settings.ts — that decides what exists.
+   *
+   * **The Metal Archives annotations are deliberately NOT switchable.** They are advisory
+   * safety information attached to whatever is suggested, not a source of suggestions, and a
+   * toggle that quietly turns off the thing flagging National Socialism in a four-year-old's
+   * review queue is not a setting this product offers. §5.
+   */
+  sources?: { listenbrainz?: boolean };
   /** How many neighbours of each crate artist to consider. */
   neighboursPerArtist?: number;
   /** How many albums to take from each neighbour. */
@@ -61,6 +73,8 @@ export interface CurateOptions {
 }
 
 export interface CurateReport {
+  /** Sources that were switched off, so a run that suggests nothing says why. */
+  disabled: string[];
   crateArtists: number;
   resolved: number;
   unresolved: string[];
@@ -72,6 +86,17 @@ export interface CurateReport {
   skippedNoArtwork: number;
   skippedKnown: number;
   skippedWrongArtist: number;
+}
+
+/**
+ * Which suggestion sources are on.
+ *
+ * Default ON: the parent switching a source off is a decision, a missing key is not. Reading
+ * an absent setting as "off" would be a worker that quietly stops suggesting anything, with
+ * no error and an empty queue as the only symptom.
+ */
+export function enabledSources(sources: { listenbrainz?: boolean } | undefined): { listenbrainz: boolean } {
+  return { listenbrainz: sources?.listenbrainz !== false };
 }
 
 /**
@@ -174,10 +199,20 @@ export async function curate(
   const fetchImpl = opts.fetchImpl ?? fetch;
   const log = opts.onLog ?? ((m: string) => console.log(m));
 
+  const useListenBrainz = enabledSources(opts.sources).listenbrainz;
+
   const report: CurateReport = {
+    disabled: useListenBrainz ? [] : ["listenbrainz"],
     crateArtists: 0, resolved: 0, unresolved: [], neighbours: 0, alreadyHave: 0,
     searched: 0, candidates: [], skippedNoArtwork: 0, skippedKnown: 0, skippedWrongArtist: 0,
   };
+
+  if (!useListenBrainz) {
+    // Every suggestion in this worker comes from Labs today. With it off there is nothing to
+    // do, and saying so is better than an empty run that looks like a failure.
+    log("[curate] ListenBrainz is switched off in Settings → Kilder; there is no other source built yet.");
+    return report;
+  }
 
   const themeIndex = await rosters(db, { write, fetchImpl, log });
 

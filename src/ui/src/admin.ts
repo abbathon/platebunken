@@ -37,6 +37,8 @@ export interface Settings {
   volumeCeiling: number;
   volumeStart: number;
   sources: { listenbrainz: boolean; lastfm: boolean; deezer: boolean; charts: boolean };
+  /** Which of those the server can actually act on. Absent means assume all, for old servers. */
+  sourcesAvailable?: Partial<Record<"listenbrainz" | "lastfm" | "deezer" | "charts", boolean>>;
   tricklePerDay: number;
 }
 
@@ -92,6 +94,9 @@ const STRINGS: Dict = {
   curation:     ["Forslagskilder", "Suggestion sources"],
   curationHelp: ["Forslag havner alltid i kø for godkjenning. Ingenting når barnet uten at et menneske har sett det.",
                  "Suggestions always land in the review queue. Nothing reaches the child without a person having seen it."],
+  notBuilt:     ["Ikke bygget", "Not built"],
+  notBuiltHelp: ["Bare kildene som er bygget kan skrus av og på. De andre står her fordi de er planlagt — de gjør ingenting ennå.",
+                 "Only the sources that exist can be switched. The others are listed because they are planned; they do nothing yet."],
   charts:       ["Lister (Norge, Europa)", "Charts (Norway, Europe)"],
   chartsHelp:   ["Den eneste kilden som ikke er avledet av det forelderen allerede liker.",
                  "The only source that is not derived from what the parent already likes."],
@@ -230,6 +235,19 @@ function toggle(label: string, on: boolean, onSet: (v: boolean) => void): HTMLEl
 }
 
 /**
+ * A source the server cannot act on yet.
+ *
+ * Drawn as a fact rather than a control: no press state, no click handler, and disabled so it
+ * cannot be tabbed into and flipped. The alternative — a toggle that stores a value nothing
+ * reads — is exactly the bug this screen is being fixed for.
+ */
+function unavailable(label: string, note: string): HTMLElement {
+  const b = el(`<button class="chip" disabled aria-disabled="true" title="${esc(note)}">${esc(label)}</button>`);
+  b.dataset.unavailable = "1";
+  return b;
+}
+
+/**
  * Which speaker the music comes out of.
  *
  * A list rather than chips: Music Assistant answers with every player on the network, and a
@@ -345,13 +363,34 @@ function panel(ctx: AdminContext): HTMLElement {
     pane.append(row(t("startVol", lang), "", el(`<span class="device__value">${s.volumeStart}</span>`)));
     pane.append(row(t("speaker", lang), t("speakerHelp", lang), playerPicker(ctx)));
   } else if (ctx.tab === "sources") {
+    /**
+     * Only the sources the server can actually act on are controls. The rest are drawn as
+     * "not built yet", because a toggle that stores a value nothing reads is a lie the parent
+     * has no way of catching — and this screen has now shipped two of those.
+     *
+     * `sourcesAvailable` comes from the server, so this list cannot drift from what the
+     * curation worker really does.
+     */
+    const can = s.sourcesAvailable ?? { listenbrainz: true, lastfm: true, deezer: true, charts: true };
+    const notYet = t("notBuilt", lang);
     const g = el(`<div class="chips"></div>`);
-    g.append(toggle("ListenBrainz", s.sources.listenbrainz, (v) => set({ sources: { ...s.sources, listenbrainz: v } })));
-    g.append(toggle("Last.fm", s.sources.lastfm, (v) => set({ sources: { ...s.sources, lastfm: v } })));
-    g.append(toggle("Deezer", s.sources.deezer, (v) => set({ sources: { ...s.sources, deezer: v } })));
+    const src = (key: "listenbrainz" | "lastfm" | "deezer", label: string) =>
+      can[key] === false
+        ? unavailable(label, notYet)
+        : toggle(label, s.sources[key], (v) => set({ sources: { ...s.sources, [key]: v } }));
+
+    g.append(src("listenbrainz", "ListenBrainz"));
+    g.append(src("lastfm", "Last.fm"));
+    g.append(src("deezer", "Deezer"));
     pane.append(row(t("curation", lang), t("curationHelp", lang), g));
+    if (Object.values(can).some((v) => v === false)) {
+      pane.append(el(`<p class="set__help">${esc(t("notBuiltHelp", lang))}</p>`));
+    }
     pane.append(row(t("charts", lang), t("chartsHelp", lang),
-      toggle(s.sources.charts ? "På / On" : "Av / Off", s.sources.charts, (v) => set({ sources: { ...s.sources, charts: v } }))));
+      can.charts === false
+        ? unavailable(t("notBuilt", lang), notYet)
+        : toggle(s.sources.charts ? "På / On" : "Av / Off", s.sources.charts,
+            (v) => set({ sources: { ...s.sources, charts: v } }))));
   } else if (ctx.tab === "shelves") {
     pane.append(row(t("trickle", lang), t("trickleHelp", lang),
       choice([0, 1, 2, 3].map((n) => ({ value: n, label: String(n) })), s.tricklePerDay, (v) => set({ tricklePerDay: v }))));

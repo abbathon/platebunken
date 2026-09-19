@@ -15,7 +15,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { foldName, sameArtist, similarArtists, LABS_ALGORITHM } from "./sources.ts";
 import { themeTokens, hasTheme, parseRosterRow, indexRoster, themeHitsFor, THEME_TERMS } from "./themes.ts";
-import { usableAlbums, interleaveBySeed } from "./worker.ts";
+import { usableAlbums, interleaveBySeed, enabledSources } from "./worker.ts";
+import { SOURCE_AVAILABLE } from "../server/settings.ts";
 import type { Album } from "../ma/types.ts";
 
 /* ── name folding ──────────────────────────────────────────────────── */
@@ -220,4 +221,25 @@ test("the limit is honoured, and an empty crate yields an empty queue", () => {
   const bySeed = new Map<string, string[]>([["A", ["a1", "a2", "a3"]], ["B", ["b1", "b2"]]]);
   assert.deepEqual(interleaveBySeed(bySeed, 3), ["a1", "b1", "a2"]);
   assert.deepEqual(interleaveBySeed(new Map(), 10), []);
+});
+
+/* ── the Sources toggles ───────────────────────────────────────────── */
+
+test("an absent sources setting does not silently disable curation", () => {
+  // The parent turning a source off is a decision. A missing key is not, and must not read
+  // as one — that would be a worker that quietly stops suggesting anything, forever, with no
+  // error and nothing in the queue to notice.
+  assert.equal(enabledSources(undefined).listenbrainz, true);
+  assert.equal(enabledSources({}).listenbrainz, true);
+  assert.equal(enabledSources({ listenbrainz: true }).listenbrainz, true);
+  assert.equal(enabledSources({ listenbrainz: false }).listenbrainz, false);
+});
+
+test("every source the settings screen offers is one the server can act on", () => {
+  // The bug this whole change is about: Settings → Kilder shipped four toggles, all stored,
+  // none read. A toggle that changes nothing is a lie the parent has no way of catching, so
+  // the server publishes what it can actually do and the page renders that.
+  const claimed = Object.entries(SOURCE_AVAILABLE).filter(([, on]) => on).map(([k]) => k);
+  assert.deepEqual(claimed, ["listenbrainz"],
+    "flip a source to available in the same commit that implements it, never before");
 });

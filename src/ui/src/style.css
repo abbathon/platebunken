@@ -364,9 +364,12 @@ html, body {
 .admin__close { min-width: 52px; min-height: 52px; font-size: 20px; color: var(--ink-dim); }
 .admin__body { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 32px; min-height: 0; }
 .admin__tabs { display: flex; flex-direction: column; gap: 6px; }
+/* Longhands, not the `font` shorthand — see the note above .gate__key. This rule carried the
+   same invalid `font: … inherit` and was silently rendering at the 13px Arial default. */
 .admin__tab {
   text-align: left; padding: 13px 15px; border: 0; border-radius: 9px; cursor: default;
-  background: none; color: var(--ink-dim); font: 600 15px/1.2 inherit;
+  background: none; color: var(--ink-dim);
+  font-family: inherit; font-weight: 600; font-size: 15px; line-height: 1.2;
 }
 .admin__tab[data-on="1"] { background: var(--bg-raised); color: var(--ink); }
 @media (hover: hover) { .admin__tab:hover { color: var(--ink); } }
@@ -379,12 +382,20 @@ html, body {
 .set__control { display: flex; align-items: center; }
 
 .chips { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+/* Longhands, for the same reason as .admin__tab and .gate__key. */
 .chip {
   padding: 11px 15px; border: 1px solid var(--edge); border-radius: 999px; cursor: default;
-  background: none; color: var(--ink-dim); font: 600 14px/1 inherit; white-space: nowrap;
+  background: none; color: var(--ink-dim); white-space: nowrap;
+  font-family: inherit; font-weight: 600; font-size: 14px; line-height: 1;
 }
 .chip[data-on="1"] { background: var(--glow); border-color: transparent; color: var(--on-glow); }
 @media (hover: hover) { .chip:not([data-on="1"]):hover { color: var(--ink); border-color: var(--ink-dim); } }
+
+/* A source the server cannot act on yet. Drawn as a fact, not a control: dashed edge, dimmed,
+   and never picking up the hover or pressed styles, so it does not read as something to press. */
+.chip[data-unavailable="1"] {
+  border-style: dashed; opacity: .55; cursor: not-allowed; text-decoration: line-through;
+}
 
 .slider { display: flex; align-items: center; gap: 14px; }
 .slider input { width: 220px; accent-color: var(--glow); }

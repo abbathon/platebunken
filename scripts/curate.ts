@@ -18,6 +18,7 @@
 import { MassClient } from "../src/ma/client.ts";
 import { openStore } from "../src/store/db.ts";
 import { counts } from "../src/store/crate.ts";
+import { load as loadSettings } from "../src/server/settings.ts";
 import { curate } from "../src/curate/worker.ts";
 
 const write = process.argv.includes("--write");
@@ -35,13 +36,20 @@ const client = new MassClient({
 });
 await client.connect();
 
+const settings = loadSettings(db);
+
 const report = await curate(db, client, {
   profileId,
   write,
+  // Settings → Kilder. The toggles used to be stored and read by nothing.
+  sources: settings.sources,
   maxSuggestions: Number(process.env.CURATE_MAX ?? "") || 24,
 });
 
 console.log("");
+if (report.disabled.length) {
+  console.log(`sources switched off: ${report.disabled.join(", ")}`);
+}
 console.log(`crate artists        ${report.crateArtists}`);
 console.log(`  resolved to MBID   ${report.resolved}`);
 if (report.unresolved.length) console.log(`  not on MusicBrainz  ${report.unresolved.join(", ")}`);

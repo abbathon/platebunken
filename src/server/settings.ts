@@ -36,6 +36,25 @@ export interface StoredSettings {
   playerId: string | null;
 }
 
+/**
+ * Which suggestion sources are actually built.
+ *
+ * The server decides this, not the page. A toggle the parent can flip that changes nothing is
+ * the same lie as a setting nothing reads — and this product has now shipped two of those
+ * (`tricklePerDay`, which did nothing until the trickle was written, and these). The page
+ * renders what this says, so the two can never drift.
+ *
+ * `listenbrainz` is ListenBrainz Labs `similar-artists`, which `src/curate/` uses. The rest are
+ * in ARCHITECTURE.md §5 as intended sources and are not written yet. Flip one to true in the
+ * same commit that implements it, never before.
+ */
+export const SOURCE_AVAILABLE: Readonly<Record<keyof StoredSettings["sources"], boolean>> = {
+  listenbrainz: true,
+  lastfm: false,
+  deezer: false,
+  charts: false,
+};
+
 export const DEFAULTS: StoredSettings = {
   lang: "nb",
   theme: "natt",
@@ -99,5 +118,10 @@ export function wireSettings(db: DatabaseSync) {
     /** Tells the page to render those two as facts rather than as controls. */
     volumeReadOnly: true,
     marks: FAVOURITE_MARKS,
+    /**
+     * Which of the source toggles mean anything yet. The page draws the rest as "not built",
+     * rather than as a control that quietly does nothing.
+     */
+    sourcesAvailable: SOURCE_AVAILABLE,
   };
 }
