@@ -100,6 +100,21 @@ export const ADMIN_HTML = `<!doctype html>
   .row .meta { font-size: 14px; }
   .row .title { font-size: 13px; }
   .row button { padding: 9px 13px; font-size: 14px; min-height: 0; flex: none; }
+  .shelf { background: #1b1f1a; border: 1px solid #2f3a2c; border-radius: var(--radius);
+           padding: 13px 14px; margin-bottom: 16px; }
+  .shelf h2 { margin: 0 0 3px; color: #a8c79c; }
+  .shelf p { margin: 0 0 11px; color: var(--dim); font-size: 13px; line-height: 1.45; }
+  .queueline { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto;
+               padding-bottom: 2px; -webkit-overflow-scrolling: touch; }
+  .queueline img, .queueline .none {
+    width: 46px; height: 46px; border-radius: 6px; flex: none; object-fit: cover;
+    background: #2a2420; display: block;
+  }
+  .queueline .first { outline: 2px solid var(--yes); outline-offset: 1px; }
+  .shelf .actions { margin-top: 0; }
+  .shelf button.yes { background: #4a7d45; border-color: #5f9a58; }
+  .ok { background: #1e2b1c; border: 1px solid var(--yes); color: #c9e3c1;
+        padding: 11px 13px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
   .err { background: #3a2220; border: 1px solid var(--hot); color: #f0c4bc;
          padding: 11px 13px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
 </style>
@@ -107,6 +122,18 @@ export const ADMIN_HTML = `<!doctype html>
 <body>
 <header><h1>Platebunken</h1><span class="count" id="count"></span></header>
 <div id="err"></div>
+<div id="note"></div>
+<section id="shelf-wrap" hidden>
+  <div class="shelf">
+    <h2 id="shelf-title"></h2>
+    <p id="shelf-help"></p>
+    <div class="queueline" id="queueline"></div>
+    <div class="actions">
+      <button id="release-all"></button>
+      <button class="yes" id="release-one"></button>
+    </div>
+  </div>
+</section>
 <main id="queue"><p class="empty">Laster…</p></main>
 <section id="rejected-wrap" hidden>
   <h2>Nylig avvist</h2>
@@ -121,6 +148,13 @@ export const ADMIN_HTML = `<!doctype html>
   var rejectedWrap = document.getElementById("rejected-wrap");
   var countEl = document.getElementById("count");
   var errEl = document.getElementById("err");
+  var noteEl = document.getElementById("note");
+  var shelfWrap = document.getElementById("shelf-wrap");
+  var shelfTitle = document.getElementById("shelf-title");
+  var shelfHelp = document.getElementById("shelf-help");
+  var queueline = document.getElementById("queueline");
+  var releaseOne = document.getElementById("release-one");
+  var releaseAll = document.getElementById("release-all");
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -133,6 +167,12 @@ export const ADMIN_HTML = `<!doctype html>
     errEl.textContent = "";
     if (!message) return;
     errEl.appendChild(el("div", "err", message));
+  }
+
+  function showNote(message) {
+    noteEl.textContent = "";
+    if (!message) return;
+    noteEl.appendChild(el("div", "ok", message));
   }
 
   /** A sleeve, or a placeholder that is a shape rather than a hole. */
@@ -251,7 +291,71 @@ export const ADMIN_HTML = `<!doctype html>
     });
   }
 
+  /**
+   * What is approved and waiting for a position.
+   *
+   * Approving does not put a record in front of the child: the trickle releases one each
+   * morning, so the shelf changes while he is asleep and there is nearly always a reason to
+   * walk over and look. This is the way to overrule that deliberately, which is the parent\u2019s
+   * to do \u2014 so the copy says plainly what will happen rather than just offering a button.
+   */
+  function renderShelf(waiting) {
+    shelfWrap.hidden = !waiting.length;
+    if (!waiting.length) return;
+
+    var n = waiting.length;
+    shelfTitle.textContent = n === 1
+      ? "1 plate venter p\u00e5 \u00e5 slippes"
+      : n + " plater venter p\u00e5 \u00e5 slippes";
+    shelfHelp.textContent =
+      "Godkjente plater kommer \u00e9n om dagen, om morgenen, mens han sover. " +
+      "Neste er " + waiting[0].artist + " \u2014 " + waiting[0].title + ".";
+
+    queueline.textContent = "";
+    waiting.forEach(function (w, i) {
+      var thumb = art(w, i === 0 ? "first" : "");
+      thumb.title = w.artist + " \u2014 " + w.title;
+      queueline.appendChild(thumb);
+    });
+
+    releaseOne.textContent = "Slipp \u00e9n n\u00e5";
+    releaseAll.textContent = n > 1 ? "Slipp alle " + n : "";
+    releaseAll.hidden = n <= 1;
+    // Re-enable after a release: they are disabled on click so a double tap cannot release
+    // twice, and without this they stay dead until the page is reloaded.
+    releaseOne.disabled = false;
+    releaseAll.disabled = false;
+  }
+
+  function doRelease(count, button) {
+    button.disabled = true;
+    showError("");
+    showNote("");
+    fetch("/api/review/release", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ count: count })
+    }).then(function (r) { return r.json(); }).then(function (out) {
+      if (!out.ok) { showError(out.error || "Kunne ikke slippe platene."); }
+      else if (out.released.length) {
+        // Say the position out loud: it is the number he will press, and it is the one thing
+        // about this product that can never be changed afterwards.
+        showNote(out.released.map(function (r) {
+          return r.artist + " \u2014 " + r.title + " st\u00e5r n\u00e5 p\u00e5 plass " + r.position + ".";
+        }).join(" "));
+      }
+      load();
+    }).catch(function (e) {
+      showError("Ingen kontakt med serveren: " + e.message);
+      button.disabled = false;
+    });
+  }
+
+  releaseOne.addEventListener("click", function () { doRelease(1, releaseOne); });
+  releaseAll.addEventListener("click", function () { doRelease(99, releaseAll); });
+
   function render(data) {
+    renderShelf(data.waiting || []);
     queue.textContent = "";
     countEl.textContent = data.pending.length ? data.pending.length + " i k\\u00f8" : "";
 

@@ -18,7 +18,7 @@ import { staticServer } from "./static.ts";
 import { wireCrate } from "./crate.ts";
 import { recordPlay } from "../store/crate.ts";
 import { save, wireSettings } from "./settings.ts";
-import { decide, reopen, wireReview } from "./review.ts";
+import { decide, releaseNow, reopen, wireReview } from "./review.ts";
 import { ADMIN_HTML } from "./admin.ts";
 import * as speaker from "./speaker.ts";
 
@@ -127,7 +127,20 @@ export function createApp(db: DatabaseSync) {
       }
 
       if (route === "/api/review" && method === "GET") {
-        return json(res, 200, wireReview(db));
+        return json(res, 200, wireReview(db, profileId));
+      }
+
+      /**
+       * Put approved albums on the grid now instead of waiting for the morning.
+       *
+       * The parent overriding the trickle on purpose. Same `release()` the trickle uses, so
+       * positions come from one place; and it stamps the day, so the automatic release will
+       * not also fire today.
+       */
+      if (route === "/api/review/release" && method === "POST") {
+        const payload = await body(req);
+        const count = payload.count === undefined ? 1 : Number(payload.count);
+        return json(res, 200, releaseNow(db, profileId, count));
       }
 
       if (route === "/api/review/decide" && method === "POST") {

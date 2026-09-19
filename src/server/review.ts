@@ -16,7 +16,10 @@
  * candidate is already in SQLite, so the queue reviews fine with MA switched off.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { approve, recentlyRejected, reject, reopenRejected, reviewQueue, tracks, type QueueEntry } from "../store/crate.ts";
+import {
+  approve, recentlyRejected, reject, release, reopenRejected, reviewQueue, tracks,
+  waitingToRelease, type QueueEntry, type StoredAlbum,
+} from "../store/crate.ts";
 import { coverPath } from "../ma/images.ts";
 
 /** A phone, held in one hand. Bigger than the crate tile, smaller than a desktop hero. */
@@ -60,8 +63,21 @@ const wire = (db: DatabaseSync, e: QueueEntry): WireCandidate => ({
   tracks: tracks(db, e.album.uri).map((t) => ({ n: t.n, title: t.title })),
 });
 
+/** An approved album on its way to the crate, but not there yet. */
+export interface WireWaiting {
+  uri: string;
+  artist: string;
+  title: string;
+  cover: { sm: string; lg: string } | null;
+}
+
 export interface WireReview {
   pending: WireCandidate[];
+  /**
+   * Approved, waiting for a position. In the exact order the trickle will release them, so
+   * the parent can see what "release now" is about to put in front of the child.
+   */
+  waiting: WireWaiting[];
   /**
    * The way back from a mis-tapped ✗. `approve()` refuses to reach past a rejection, so
    * without this a wrong tap on a phone loses the album silently and for good.
@@ -69,11 +85,54 @@ export interface WireReview {
   rejected: WireCandidate[];
 }
 
-export function wireReview(db: DatabaseSync): WireReview {
+const wireWaiting = (a: StoredAlbum): WireWaiting => ({
+  uri: a.uri,
+  artist: a.artist || "—",
+  title: a.title,
+  cover: cover(a.coverProxyId),
+});
+
+export function wireReview(db: DatabaseSync, profileId: string): WireReview {
   return {
     pending: reviewQueue(db).map((e) => wire(db, e)),
+    waiting: waitingToRelease(db, profileId).map(wireWaiting),
     rejected: recentlyRejected(db, 10).map((e) => wire(db, e)),
   };
+}
+
+export interface ReleaseResult {
+  ok: boolean;
+  released: { artist: string; title: string; position: number }[];
+  error?: string;
+}
+
+/**
+ * Put approved albums on the grid now, rather than waiting for the morning.
+ *
+ * The trickle (§4.1) exists so the shelf changes while he is asleep and there is nearly always
+ * a reason to walk over and look. This is the parent overriding that on purpose, which is
+ * theirs to do — they are the authority the whole product is built around.
+ *
+ * It deliberately goes through the same `release()` as the trickle, so positions come from one
+ * place and stay append-only. It also stamps `released_at`, which means a manual release
+ * counts as the day's release and the automatic one will not fire again today. That is the
+ * honest behaviour rather than a special case: a release is a release.
+ */
+export function releaseNow(db: DatabaseSync, profileId: string, count: number): ReleaseResult {
+  const n = Math.max(1, Math.min(Number.isFinite(count) ? Math.trunc(count) : 1, 50));
+  try {
+    const out = release(db, profileId, n);
+    // Read the positions back rather than assuming: release() is the only thing that knows
+    // what number each album actually got.
+    const placed = out.map((a) => {
+      const row = db.prepare(`SELECT position FROM approved WHERE profile_id = ? AND uri = ?`)
+        .get(profileId, a.uri) as { position: number } | undefined;
+      return { artist: a.artist || "—", title: a.title, position: Number(row?.position ?? -1) };
+    });
+    return { ok: true, released: placed };
+  } catch (e) {
+    return { ok: false, released: [], error: (e as Error).message };
+  }
 }
 
 export type Decision = "approved" | "rejected";

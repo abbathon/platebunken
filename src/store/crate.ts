@@ -268,6 +268,21 @@ export function recentlyRejected(db: DatabaseSync, limit = 10): QueueEntry[] {
 }
 
 /**
+ * What is approved and waiting, in the exact order the trickle will release it.
+ *
+ * Same ORDER BY as `release()` — and it has to stay that way, because this is what the parent
+ * is shown before they press "release now". A list that disagreed with what actually came out
+ * would be worse than no list.
+ */
+export function waitingToRelease(db: DatabaseSync, profileId: string, limit = 20): StoredAlbum[] {
+  const rows = db.prepare(
+    `SELECT uri FROM approved WHERE profile_id = ? AND position IS NULL
+      ORDER BY approved_at ASC, rowid ASC LIMIT ?`,
+  ).all(profileId, limit) as { uri: string }[];
+  return rows.map((r) => getAlbum(db, r.uri)!).filter(Boolean);
+}
+
+/**
  * `at` is when this release happened, and it defaults to now. It is a parameter because the
  * trickle (src/server/trickle.ts) decides whether a release is due by comparing TODAY against
  * the newest `released_at`, and it cannot do that honestly if its own clock and this one are
