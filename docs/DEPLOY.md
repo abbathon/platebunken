@@ -22,8 +22,21 @@ Two consequences, both of which have to be handled deliberately:
 
 - **A fresh deploy starts empty.** If a store already exists elsewhere — on the machine the
   project was developed on, or on a previous host — it must be copied into the volume
-  *before* the child sees the result. An empty crate looks to a four-year-old exactly like
-  all of his music being gone.
+  *before* the child sees the result (§3). An empty crate looks to a four-year-old exactly
+  like all of his music being gone.
+
+  If there is no store anywhere, the crate is built from the parent's seed playlist, once,
+  against the volume:
+
+  ```
+  docker compose exec platebunken pb seed            # dry run, writes nothing
+  docker compose exec platebunken pb seed --write
+  ```
+
+  It reads the playlist twice and refuses to seed if the two reads disagree, because a
+  provider playlist can answer partially while Music Assistant is still syncing it and the
+  order it writes is **permanent** — positions are append-only and the database will not
+  renumber them. Run the dry run first and look at the order it reports.
 - **`docker compose down -v` destroys the product.** The `-v` removes that volume. There is
   no other command in this stack that matters half as much.
 
@@ -70,10 +83,12 @@ On the machine that holds the store — never a plain `cp`, which on a live WAL 
 loses everything not yet checkpointed:
 
 ```
-node -e 'const {DatabaseSync}=require("node:sqlite");
-  new DatabaseSync("./data/platebunken.sqlite",{readOnly:true})
-    .exec("VACUUM INTO \x27/tmp/platebunken.sqlite\x27")'
+npm run pb -- backup /tmp/platebunken.sqlite
 ```
+
+It prints how many albums and candidates are in the copy it just made. Check that against what
+you expect before carrying it anywhere: the failure this replaces produced a file that opened
+cleanly and was simply out of date.
 
 Copy that file to the host, then load it into the named volume:
 
@@ -147,14 +162,21 @@ docker compose -f compose.yml -f compose.build.yml up -d --build
 
 Back up the **volume**, on the host's own schedule. There is nothing bespoke to configure, but
 there is one rule: **use SQLite's own backup, not a file copy.** The database runs in WAL mode
-and a plain `cp` of a live database is missing whatever is still in the `-wal` sidecar.
+and a plain `cp` of a live database is missing whatever is still in the `-wal` sidecar. A copy
+taken that way during this deployment read 16 albums and 0 pending when the real store had 46
+and 30, and nothing anywhere said so.
 
 ```
-docker exec platebunken node -e \
-  'new (require("node:sqlite").DatabaseSync)("/data/platebunken.sqlite",{readOnly:true})
-     .exec("VACUUM INTO \x27/tmp/backup.sqlite\x27")'
+docker compose exec platebunken pb backup /tmp/backup.sqlite
 docker cp platebunken:/tmp/backup.sqlite ./platebunken-$(date +%F).sqlite
 ```
+
+Safe while the server is running, and it prints what is in the copy so a backup nobody has
+counted is not a backup nobody has checked. It refuses to write over an existing file, so a
+schedule that reuses one name fails loudly rather than keeping a single rolling copy.
+
+`/tmp` because compose mounts the container `read_only:` with a tmpfs there; `/data/...` works
+too and lands in the volume you are backing up, which is usually not what you want.
 
 ## 7. Reverse proxy, if one is used
 
@@ -182,7 +204,23 @@ page, which is the worst possible failure for a pre-reader.
   (`GATE_PIN`). It is a child gate, not security.
 - **One album is released each morning at 06:00 local**, at most one a day, from whatever has
   been approved. `/admin` can push a release immediately when that is wanted.
-- **The curation worker is not scheduled.** It is `npm run curate -- --write` and runs from a
-  checkout, not from the container. Running it daily from cron on the host is reasonable; it
-  is deliberately not automatic inside the image, because nothing it produces reaches the
-  child without a person approving it first anyway.
+- **The curation worker runs itself**, once a day after 03:00 local, inside the container. The
+  boot log says so. It fills the review queue and **decides nothing** — the gate at /admin is
+  where a person approves, and `approve()` refuses anything that skipped it, so an automatic
+  curation cannot put music in front of the child.
+
+  This was previously `npm run curate -- --write` from a checkout, and it was a bug rather than
+  a choice: `scripts/` never shipped in the image, so on this deployment the queue drained as
+  the parent approved and nothing could refill it. The obvious repair — ship a command — only
+  makes refilling *possible*. A maintenance step that depends on someone remembering fails the
+  same way, weeks later, with an empty queue and no obvious cause.
+
+  To run one now, or to see what it would find:
+
+  ```
+  docker compose exec platebunken pb curate            # dry run, writes nothing
+  docker compose exec platebunken pb curate --write
+  ```
+
+  The first `--write` run is slow on purpose: it pulls the Metal Archives theme rosters at that
+  site's published 3-second crawl delay. They are cached in the store for a month afterwards.

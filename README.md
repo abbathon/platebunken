@@ -17,15 +17,17 @@ are self-hosted, and a service worker keeps covers warm across reboots. See
 [`PRODUCT.md`](PRODUCT.md) for product truth and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 for the technical design.
 
-Not done: the crate has never been seeded (`npm run db:seed -- --write`), and nothing in this
-project has ever made a sound.
+The review queue fills itself: the curation worker runs daily inside the container and suggests,
+and a person at `/admin` decides. Nothing reaches the child any other way.
+
+Not done: **nothing in this project has ever made a sound.**
 
 ## Shape
 
 ```
 Home Assistant host        Music Assistant (Qobuz + NAS + Sonos), MQTT
         │
-Docker host                platebunken-server (SQLite, curation, admin, MQTT)
+Docker host                platebunken-server (SQLite, curation, admin)
         │                  one image; the store is a volume
 old laptop in the bedroom  Chromium kiosk → platebunken-ui
                            audio out → powered monitors, or a Sonos on the LAN
@@ -44,27 +46,43 @@ npm run dev              # server + vite, proxied, opens a browser
 npm test                 # the invariants: the gate, the crate, the volume ceiling
 npm run typecheck
 
+npm run pb               # the maintenance verbs: curate, seed, backup
 npm run db:seed          # dry run — what seeding the crate from the seed playlist would do
 npm run db:seed -- --write
 ```
+
+`pb` is the same entrypoint that ships inside the image, so what is run here against
+`./data/platebunken.sqlite` is exactly what runs there against the volume. On the host it is
+`docker compose exec platebunken pb <verb>` — see [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
 `npm run smoke -- --play` starts real music on a real speaker in a child's bedroom. Do not run
 it without asking.
 
 ## Deploying it
 
-On the Docker host, from a checkout of this repo:
+On the Docker host. No checkout is needed — the image carries the application, and only two
+files live on the host:
 
 ```
-git clone … && cd platebunken
-cp .env.example .env && $EDITOR .env
-docker compose up -d --build
+/opt/platebunken/compose.yml     # copied from this repo
+/opt/platebunken/.env            # never from this repo. Real values. chmod 600.
+
+docker compose pull && docker compose up -d
 ```
 
-`compose.yml` builds from source rather than pulling a published image, which is the right
-trade for one private host: there is no registry to run, no tag to keep in step with the repo,
-and the thing that is deployed is the commit that is checked out. Publishing a multi-arch image
-so that `docker compose up -d` needs no source at all is a public-release step, not this one.
+`compose.yml` **pulls** a published multi-arch image rather than building it;
+`.github/workflows/image.yml` builds it on every push to `main` and every `v*` tag. ARCHITECTURE.md §3.1: *the
+image is the deployment — rebuild from a tag, roll back to a tag.* A host that compiles its own
+copy cannot roll back to anything, because what it ran was whatever that host happened to build
+that day. To build on the host anyway, for a day when the registry is unreachable, add
+`-f compose.build.yml`.
+
+The maintenance verbs run inside that container against the real volume:
+
+```
+docker compose exec platebunken pb curate --write    # refill the review queue
+docker compose exec platebunken pb backup /tmp/backup.sqlite
+```
 
 One image, one container. It serves the built page and the API from one process, holds the
 SQLite store and owns the only Music Assistant credential; the laptop in the bedroom holds no
@@ -83,13 +101,15 @@ Everything else rebuilds from the image in thirty seconds.
 
 ## Research
 
-Five documents, every claim cited to a primary source, everything unverifiable marked as such.
+Seven documents, every claim cited to a primary source, everything unverifiable marked as such.
 
 - [`docs/research/01-backend-sources-sonos.md`](docs/research/01-backend-sources-sonos.md) — Music Assistant internals, Sonos control, Qobuz
 - [`docs/research/02-prior-art-kiosk-ui.md`](docs/research/02-prior-art-kiosk-ui.md) — kids' music players, cover-art UIs, Linux kiosk, child UX
 - [`docs/research/03-discovery-and-filtering.md`](docs/research/03-discovery-and-filtering.md) — similar-artist APIs, AI-slop and NSBM filtering, acquisition
 - [`docs/research/04-pedagogy.md`](docs/research/04-pedagogy.md) — numerals, literacy, and what not to teach
 - [`docs/research/05-klipsch-local-audio.md`](docs/research/05-klipsch-local-audio.md) — local audio path, volume ceiling
+- [`docs/research/06-queue-events-and-listens.md`](docs/research/06-queue-events-and-listens.md) — Music Assistant queue events, verified live
+- [`docs/research/07-listenbrainz-scrobbling.md`](docs/research/07-listenbrainz-scrobbling.md) — scrobbling, and the privacy answer
 
 ## Configuration
 

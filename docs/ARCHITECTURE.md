@@ -144,6 +144,13 @@ cargo-cult and it hands a small Node process the whole host's network namespace 
 public the moment the image is, and `docker history` reads it back. The image itself must be
 publishable without redacting anything — that is the test.
 
+**What goes in the image is what runs in it — and "runs" was read too narrowly once.** The
+runtime stage carries `src/ma`, `src/store`, `src/server`, `src/curate`, `src/cli.ts` and the
+built page. The two curation entries are there because the maintenance verbs were shipped
+*outside* the image on the assumption that they were a developer's business, which quietly made
+them unreachable from the only machine holding a real crate. §5.2 has the full account; the rule
+it leaves behind is that a command which operates on the deployment belongs in the deployment.
+
 **Multi-stage, non-root, and it serves its own page.** Build stage runs `vite build` and `tsc`;
 runtime stage is a slim Node base carrying `dist/` and production deps only, running as a
 non-root user, with a `HEALTHCHECK` that asks the app rather than the port. The page is static
@@ -579,10 +586,56 @@ approved album can be re-resolved if that library is ever rebuilt. Losing an app
 silently is worse than any duplicate.
 
 **Seeding is the one automatic approval,** and the justification is narrow: the parent built the
-seed playlist by hand, so the playlist *is* the act of approval. `scripts/db-seed.ts` reads the
+seed playlist by hand, so the playlist *is* the act of approval. `src/store/seed.ts` reads the
 playlist twice and refuses to write if the two reads disagree — a provider playlist can return a
 partial answer while MA is still syncing, and a partial read would freeze a wrong order into an
 append-only crate.
+
+### 5.2 The maintenance verbs live in the image, and the worker runs itself
+
+Curation and seeding were `scripts/curate.ts` and `scripts/db-seed.ts`, and **`scripts/` was
+never copied into the image.** That was not a packaging oversight with a packaging-sized cost.
+The moment the container became the deployment, the real crate was the volume on the Docker
+host — and the only reachable copy of both commands ran on a laptop against
+`./data/platebunken.sqlite`, a stale file that is no longer the product. The review queue on
+the live deployment could not be refilled at all. It drains as the parent approves, so the
+symptom would have arrived weeks later as "there is nothing left to review", with nothing
+pointing at the cause.
+
+Three decisions came out of that, and the order matters.
+
+**The verbs are modules, and the CLI is an adapter.** `src/cli.ts` ships in the image as `pb`,
+parses argv and prints; every rule lives behind a module interface. `curate()` was already
+that shape and needed only the second adapter. `seed` was not: `scripts/db-seed.ts` held the
+read-twice guard — the thing protecting the one irreversible write in this product — in a
+place nothing could call and nothing could test. It is now `seedCrate(db, source, opts)`, and
+the guard has tests, which it never had in two years of being the most dangerous code here.
+
+**`seedCrate` takes a port, not a `MassClient`.** Two methods wide, because the rule that
+matters is a rule about what a source *answers*, and a fake that answers three tracks and then
+seventeen is one object where catching a real server mid-sync is not arrangeable at all. It
+also keeps `src/store` free of a runtime dependency on `src/ma`.
+
+**Everything reads `DATABASE_PATH`,** which inside the container already points at the volume.
+Correct by construction rather than by remembering, which is the whole reason for moving them
+rather than documenting them.
+
+**And the worker is scheduled in-process** (`src/server/curation.ts`), daily after 03:00 local,
+sharing the trickle's existing half-hourly wake-up. Shipping a command makes refilling
+*possible*; it does not make it *happen*, and a maintenance step that depends on someone
+remembering has exactly the failure mode described above. The run is claimed in the store
+*before* it starts, which is the overlap guard: a run takes minutes of paced outbound requests
+and the check fires every half hour.
+
+**This does not widen the gate.** A scheduled curation writes to `candidate` as undecided,
+exactly as a hand-run one does, and `approve()` refuses anything that skipped the queue. The
+automatic half of this pipeline is the *suggesting*; the deciding has a person in it and always
+will. `release()` is the precedent for the shape — the daily trickle and the parent's "Slipp én
+nå" button are two adapters over one verb, and `runCuration` / `pb curate` are now the same.
+
+**`release` deliberately has no `pb` verb.** It already has those two adapters and nothing
+varies across a third. Every command in `pb --help` is something an operator has to learn, and
+one that duplicates a button the parent already has on their phone does not earn it.
 
 `npm test` covers the invariants above. They are the part of this system where a regression is
 invisible until it has already cost the child his map of his own music.
