@@ -15,8 +15,11 @@ retires each one. That list is the honest version of the sentence that used to s
 of this file reading *"Not production."*
 
 ```
-npm run prototype        # vite, opens a browser
+npm run dev              # src/server/ + vite, opens a browser   (`npm run prototype` is an alias)
 ```
+
+It no longer runs on its own. The page reads `/api/crate` from `src/server/`, which holds the
+store — that is the point of the change, not an inconvenience of it.
 
 ## What is on screen
 
@@ -60,29 +63,31 @@ these lands in `.env`, the store, or an MQTT topic Home Assistant owns — never
 learning to read, and it is the one place in his interface where the typeface does real work.
 `?font=archivo|andika|lexend` switches it too, so both can be put in front of him in seconds.
 
-## Data — and the change this file is waiting for
+## Data
 
-Today the page fetches `public/library.json`, a snapshot of **the whole library**, and filters it
-on a `seed` boolean.
+**The only source of albums is the approved set.** The page fetches `/api/crate`, which
+`src/server/` builds from `src/store/` — and `src/store/`'s only way in is `approve()`, which
+throws on an album that was never reviewed. The crate asks the store what albums exist, and asks
+Music Assistant exactly two things: *give me this cover* and *play this uri*. Never *what have
+you got*.
 
-That is the one thing here that contradicts the architecture. `src/store/` holds the approved set
-and the gate that guards it (§5.1), and until this page reads from it, the gate is a good
-intention with 13 passing tests. The crate must ask the store what albums exist and ask Music
-Assistant exactly two things — *give me this cover* and *play this uri* — and never *what have
-you got*. Anything else and the boundary is one refactor from advisory.
+This is the change the file used to be waiting for. What it replaced is worth writing down,
+because the failure mode was not obvious: the page fetched `public/library.json` — a snapshot of
+the **whole** library — filtered it on a `seed` boolean, and **fell back to a hardcoded mock set
+on any error**. Twenty albums nobody had approved, several of which nobody would, one fetch
+failure away from the child. The mock set is deleted rather than disabled. A fallback that exists
+is a fallback that fires.
 
-When it lands, `crate()` returns `CrateSlot[]` (`{position, album|null}`) and **callers must not
-compact it**. The gap is the point: it is what keeps every position after a withdrawal exactly
-where the child left it.
+`slots` may contain nulls and **callers must not compact it**. A null is a withdrawn album; its
+empty tile is what keeps every position after it exactly where the child left it.
 
 ```
-npm run snapshot     # dump the real library to public/library.json   (today)
-npm run db:seed      # dry run: what seeding the store would do       (the replacement)
+npm run db:seed          # dry run: what seeding the store from the seed playlist would do
+npm run db:seed -- --write
 ```
 
-The snapshot is **gitignored** — it is a dump of a private music library. The page falls back to
-the mock set in `src/albums.ts` when it is absent, so it always runs; the bottom bar says which it
-is showing. `?all=1` shows the whole library rather than the curated set, for working on the grid.
+`?all=1` is gone with the snapshot it belonged to: there is no "whole library" left to show.
+`npm run snapshot` still exists, but it only feeds design work now — nothing reads its output.
 
 The page holds no token. Cover URLs point at MA's `/imageproxy/<proxy_id>`, which serves
 unauthenticated, and they are stored **host-less** so the dev server proxies them through the
@@ -118,11 +123,13 @@ Not caveats — a work list. Each line names the thing that retires it.
 
 | Missing | Consequence | Retired by |
 |---|---|---|
-| **Reads the library, not the approved set** | The approval gate is bypassed entirely | Wiring this page to `src/store/` — build order §12 item 4 |
-| **No error handling** | §10's sleepy state does not exist; a failure has no rendering, and principle 4 says the child never sees an error | One module, once the data layer is a call that can fail |
-| **No persistence** | Settings, play history and play counts are in memory; the *recent* and *most-played* shelves reset on reload | The store, same wiring as row 1 |
-| **No tests** | Every visual regression this session was invisible to the type checker | A data layer that is a function rather than a `fetch` |
+| ~~Reads the library, not the approved set~~ | — | **Done.** `/api/crate`, and the mock set deleted |
+| ~~No error handling~~ | — | **Done.** §10's sleepy state, after three missed fetches |
+| ~~Play history resets on reload~~ | — | **Done.** The `play` log in the store (§5.1) |
+| **Settings do not persist** | Theme, language and numeral face are still in page memory, so the kiosk forgets them on every reboot | The store, or `.env` — §4.6 says which value belongs where, and nothing has been written yet |
+| **No tests in this directory** | Every visual regression here has been invisible to the type checker | Screenshotting it in Chromium is what is actually used; that is a habit, not a test |
 | **Google Fonts in `index.html`** | **The kiosk has no WAN.** The numeral face will not load on the device it was chosen for | Self-hosting the faces as subset `woff2` — all three, not just the winner, so the comparison can be run in the room it matters in |
+| **No service worker** | Covers are cached only by Chromium's own disk cache, and a page that reloads while the server is away shows Chromium's error screen | Workbox + `navigator.storage.persist()`, once the origin counts as secure — ARCHITECTURE.md §3.1 |
 | **The name `prototypes/`** | The directory disclaims the product that lives in it | The parent's call: promote to `src/ui/`, or rewrite. Not moved until they say so |
 
 ## Paid for already — do not rediscover these

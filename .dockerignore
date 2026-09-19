@@ -1,0 +1,30 @@
+# Never in the build context, let alone in a layer. A layer is public the moment the image is.
+.env
+.env.*
+!.env.example
+ansible/inventory.yml
+ansible/group_vars/kiosk.yml
+secrets.*
+config.local.*
+
+# A dump of a private music library.
+prototypes/crate/public/library.json
+
+# The store itself. It belongs in a volume; an image that carried a copy of the child's crate
+# would be an image that cannot be shared and a deploy that silently reverts his positions.
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+node_modules
+dist
+.git
+.github
+.claude
+.impeccable
+docs
+brand
+*.md
+!README.md
+.DS_Store

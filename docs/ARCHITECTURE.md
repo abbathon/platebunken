@@ -166,6 +166,22 @@ Decide this deliberately, because it bites late and quietly: the cache simply ne
 the symptom is intermittent black tiles on a cold boot, months from now, on the one machine
 nobody wants to debug.
 
+**And there is a second cost, found by unplugging the server with Chromium open.** Because the
+page and the API now come from the same origin, an unreachable server is not a page with no
+data — it is *no page at all*. Chromium renders its own error screen: white, English, with a
+reload button. The app's sleepy state cannot help, because the app never loaded. That is
+principle 2 broken at the exact moment it is most likely to matter, since the laptop and the
+Docker host will not come back from a power cut in step.
+
+Two things close it, and both are in the repo:
+
+- **The kiosk launcher waits.** `wait_for_server()` polls `/healthz` and does not open Chromium
+  until it answers, so the gap is the black root window §10 already describes rather than an
+  error page. This needs nothing from the browser and is the fix that matters.
+- **A cached app shell** — the same service worker as above, which is the other reason the
+  secure-origin flag is worth having. It covers the case the launcher cannot: the page already
+  open when the server goes away and something reloads it.
+
 ---
 
 ## 4. The child's interface
@@ -500,10 +516,25 @@ itself. Qobuz's ToS licenses streaming *"without authorization to download"*. Co
 `src/store/` — SQLite via Node's built-in `node:sqlite`. No dependency: a kiosk expected to run
 for a decade should not carry a native addon that needs rebuilding on every Node upgrade.
 
-Five tables. `album` is everything we know of; `candidate` is the review queue; `flag` holds
+Seven tables. `album` is everything we know of; `candidate` is the review queue; `flag` holds
 advisory annotations; `approved` is the crate. The gate is a function that refuses:
 `approve()` throws on an album that was never suggested, so no code path can reach the child's
 crate without a person having seen the album first.
+
+`track` and `play` came later, with the wiring, and neither is append-only the way the crate is:
+
+- **`track` is a cache, not a record.** The number line (§4.2) and `start_item` both need it, and
+  the alternative — asking MA for an album's tracks when the child opens it — fails exactly where
+  §10 says it must not. "MA unreachable" is supposed to mean a sleepy crate with covers from
+  cache; an album that opens onto an empty track list is not that. A re-tag replaces the rows
+  wholesale, because freezing the first answer would leave the number line disagreeing with what
+  actually plays. Track numbers belong to the record; only **positions** belong to the child.
+- **`play` is an append-only log, and it is the only source of the *recent* and *most-played*
+  shelves.** There is no separate counter: what he played is what he played. A counter cannot
+  answer "recent" and cannot be recomputed if the shelf rules change. `recordPlay()` refuses an
+  album that is not in this profile's released crate, so the approval gate holds on the way out
+  as well as on the way in — the shelves are a surface the child can reach, and nothing may
+  arrive on one without having been approved.
 
 **Two invariants are database triggers, not application code.** A rule that lives only in a
 function is a rule the next code path walks around.
@@ -740,7 +771,10 @@ a decade. Design passes via the Impeccable skills.
 |---|---|---|
 | Speaker grouped away in the Sonos app | nothing — ungroup, then play | — |
 | Speaker taken by another source | nothing — `play_media` resets the session | — |
-| MA unreachable | sleepy crate, covers from cache | HA notification |
+| MA unreachable | crate and shelves render normally; a press makes no sound | HA notification |
+| Store unreachable mid-session | last known crate for ~30 s, then the sleepy state | HA notification |
+| Store unreachable at boot | black screen until it answers — the launcher waits (§3.1) | journal on the kiosk |
+| Crate empty (nothing approved yet) | the sleepy state, same as unreachable | the server says so at boot |
 | Qobuz down / auth expired | local albums still play | HA notification |
 | Chromium crash | ~2 s black, then the crate | HA notification if repeated |
 | Laptop dies | Sonos path keeps playing | HA notification |
@@ -775,8 +809,10 @@ Development happens on macOS; the Linux laptop is a deployment target, not a dev
    A, so B (the stack) and C (the shelf) are deleted rather than kept as options. A prototype
    that still carries the alternatives after the decision is one nobody trusts the decision of.
 3. Now playing: cover, transport, volume blocks, dim. **Done.**
-4. SQLite + approved-set model; the crate reads from it. **Done** (`src/store/`, §5.1) — the
-   store and the gate exist and are tested; wiring the prototype crate to it is part of step 2.
+4. SQLite + approved-set model; the crate reads from it. **Done.** `src/store/` holds the gate
+   (§5.1) and `src/server/` serves it; the page reads `/api/crate` and nothing else. The mock
+   album set is **deleted**, not disabled — its old error path put twenty unapproved albums in
+   front of the child on any fetch failure, and a fallback that exists is a fallback that fires.
 5. Album view: the number-line track list. **Done** — §4.2, reached with ↑↓ from now playing.
 6. Admin app + review queue.
 7. Curation worker: seed → suggestions → annotations → queue.
@@ -787,11 +823,10 @@ Development happens on macOS; the Linux laptop is a deployment target, not a dev
 
 Ship 1–3 and put it in his room. Everything after that is improvement; those three are the product.
 
-**The gate between "done" and "in his room" is the server** — §3's `platebunken-server`, deployed
-as a Docker image per §3.1. Steps 2, 3 and 5 are built and run under `vite dev` against a dev-only
-plugin standing in for it. That plugin is `apply: "serve"`: it does not exist in a build, so there
-is a built page today that calls `/api/speaker/*` and nothing that answers. Items 4, 6, 7 and 8
-all land inside that same process. It is one piece of work and everything else queues behind it.
+**The server exists.** `src/server/` serves the built page and the API from one process, holds
+the store and owns the only MA credential; `npm run dev` runs it beside Vite, which proxies to
+it, so there is one implementation of the API rather than a dev-only stand-in that could never
+ship. Items 6, 7 and 8 land inside that same process.
 
 **Wayland vs X11 is settled: X11.** It was left open here pending a touch-and-fling test on the
 actual laptop; §8 was rewritten the other way round instead, because XFCE on X11 is what was

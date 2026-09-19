@@ -1,0 +1,75 @@
+# platebunken-server, on the Docker host. ARCHITECTURE.md §3.1.
+#
+#   cp .env.example .env && $EDITOR .env
+#   docker compose up -d --build
+#
+# THE ONE COMMAND THAT DESTROYS THE PRODUCT IS `docker compose down -v`.
+#
+# The `-v` removes the named volume below, and that volume is the child's crate: which albums
+# he owns and — far more importantly — which POSITION each one sits in. Those positions are
+# append-only and the database refuses to renumber them, because they are the only index a
+# pre-reader has into his own music. Everything else in this stack is rebuilt from the image
+# in thirty seconds. That volume is not. Back it up with whatever backs up the rest of this
+# host; there is nothing bespoke to set up.
+
+services:
+  platebunken:
+    build: .
+    image: platebunken-server:local
+    container_name: platebunken
+    restart: unless-stopped
+
+    # Bridge networking, NOT host. This process dials OUT to Music Assistant's WebSocket and
+    # to the MQTT broker, and is dialled IN on exactly one port. Nothing in it needs mDNS or
+    # SSDP. Music Assistant itself needs `network_mode: host` because Sonos discovery does —
+    # that is the obvious thing to copy and it is wrong here, since it would hand a small Node
+    # process the whole host's network namespace for no gain at all.
+    ports:
+      - "8080:8080"
+
+    # Every secret arrives here, at run time. Never an `ENV` in the Dockerfile, never a COPY
+    # of .env into a layer. The image must stay publishable without redacting anything.
+    env_file:
+      - .env
+
+    environment:
+      # Fixed by the image layout; .env has no business overriding them.
+      PORT: "8080"
+      HOST: "0.0.0.0"
+      PUBLIC_DIR: /app/dist/public
+      DATABASE_PATH: /data/platebunken.sqlite
+      # Log timestamps and any future scheduling read local time. A container defaults to UTC,
+      # and "the new shelf arrives in the morning" is a statement about the child's morning.
+      TZ: ${TZ:-Europe/Oslo}
+
+    volumes:
+      - crate:/data
+
+    # A reachable store is the health signal, not an open socket. Defined in the Dockerfile so
+    # that `docker run` gets it too; repeated here only as the place an operator looks first.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    # A kiosk that dies overnight is how this product fails silently, so the container is
+    # allowed to be noisy in the log and is not allowed to fill the disk with it.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Nothing here writes outside /data. Saying so makes an accidental write fail loudly in a
+    # test rather than quietly persisting into a layer nobody backs up.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  crate:
+    name: platebunken-crate

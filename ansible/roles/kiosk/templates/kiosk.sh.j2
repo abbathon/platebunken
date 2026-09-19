@@ -23,9 +23,42 @@ if [ -f "$PREFS" ]; then
   sed -i 's/"exited_cleanly":false/"exited_cleanly":true/; s/"exit_type":"[^"]*"/"exit_type":"Normal"/' "$PREFS"
 fi
 
+# Wait for the server before opening the page.
+#
+# The page and the API come from the same origin (ARCHITECTURE.md §3.1), so if this laptop
+# boots before platebunken-server answers — and it will: two machines, one power cut — then
+# Chromium renders ITS OWN error page. White background, English text, a reload button: the
+# child never sees an error, except at the exact moment he is most likely to be standing
+# there. The app's own sleepy state cannot help, because the app has not loaded.
+#
+# So: black screen until the server answers, then open it. Silence is the right answer here
+# the same way it is everywhere else in this product. Logged for whoever reads the journal.
+wait_for_server() {
+  i=0
+  while ! curl -sf --max-time 2 "{{ kiosk_health_url }}" >/dev/null 2>&1; do
+    i=$((i + 1))
+    [ $((i % 15)) -eq 1 ] && echo "kiosk: waiting for {{ kiosk_health_url }} (${i})"
+    sleep 2
+  done
+}
+
+{% if kiosk_treat_as_secure_origin %}
+# --unsafely-treat-insecure-origin-as-secure: ARCHITECTURE.md §3.1, the secure-origin trap.
+#
+# The server is on another host over plain http, so this origin is not "secure" and Chromium
+# disables service workers and navigator.storage.persist() on it. Without those there is no
+# persistent cover cache — and warm covers are the only thing standing between a held-down
+# arrow key and a grid of black squares after a reboot. It also means the app shell itself can
+# be cached, which is the other half of the wait_for_server problem above.
+#
+# This weakens a real browser protection, and it is the right call HERE and only here: one
+# machine, one origin, one LAN, no WAN, no other site ever loaded. The portable answer is TLS
+# in the stack; turn this off the day that exists.
+{% endif %}
 # Restart always, with no rate limit. systemd gives up after ~5 rapid restarts by default,
 # which is the failure mode that looks like "the screen just went black and stayed black".
 while true; do
+  wait_for_server
   chromium \
     --kiosk \
     --app="{{ kiosk_url }}" \
@@ -35,6 +68,7 @@ while true; do
     --disable-session-crashed-bubble \
     --disable-features=OverscrollHistoryNavigation,TouchpadOverscrollHistoryNavigation,TranslateUI \
     --autoplay-policy=no-user-gesture-required \
-    --check-for-update-interval=31536000
+    --check-for-update-interval=31536000{% if kiosk_treat_as_secure_origin %} \
+    --unsafely-treat-insecure-origin-as-secure="{{ kiosk_origin }}"{% endif %}
   sleep 2
 done

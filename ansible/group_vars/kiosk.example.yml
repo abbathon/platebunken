@@ -28,7 +28,18 @@ squeezelite_mixer: "Master"
 squeezelite_player_name: platebunken-kiosk
 
 # ── the page the kiosk opens ─────────────────────────────────────────
-kiosk_url: "http://localhost:5199/"
+# platebunken-server on the Docker host (ARCHITECTURE.md §3.1), NOT this laptop: the laptop
+# holds no state. A dev machine running `npm run dev` also works while building.
+#
+# The launcher derives kiosk_origin and kiosk_health_url from this and will not open Chromium
+# until /healthz answers — otherwise a laptop that boots before the server shows the child
+# Chromium's own English error page.
+kiosk_url: "http://10.0.0.0:8080/"
+
+# Let Chromium treat that plain-http origin as secure, so a service worker and a persistent
+# cover cache are possible at all (§3.1, the secure-origin trap). Set false once the stack
+# serves TLS, and never leave it on for an origin you do not control end to end.
+kiosk_treat_as_secure_origin: true
 
 # ── blanking (§4.3 — the host owns this, never the app) ──────────────
 kiosk_blank_seconds: 300

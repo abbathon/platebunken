@@ -10,3 +10,16 @@ kiosk_dpms_off_seconds: 300
 # the only way in. If wifi or sshd breaks you are recovering from GRUB or a live USB.
 # Set false while the machine is still being built; true once there is a second door.
 kiosk_lock_vt: true
+
+# The page's own origin, and the health endpoint the launcher waits on before opening it.
+# Derived from kiosk_url so there is one place to change the server's address.
+kiosk_origin: "{{ kiosk_url | regex_replace('^(https?://[^/]+).*$', '\\1') }}"
+kiosk_health_url: "{{ kiosk_origin }}/healthz"
+
+# Treat the server's plain-http origin as secure, so Chromium allows a service worker and
+# navigator.storage.persist() (ARCHITECTURE.md §3.1, the secure-origin trap).
+#
+# This is a real weakening of a real browser protection, and it is the right call HERE and
+# only here: one machine, one origin, one LAN, no WAN, no other site ever loaded. Turn it off
+# the day the stack serves TLS. Leaving it on with a public server would be a mistake.
+kiosk_treat_as_secure_origin: true

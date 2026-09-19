@@ -10,8 +10,13 @@ It does four things: **browse, play, volume, skip.** It refuses the fifth.
 
 ## Status
 
-The crate, the now-playing screen and the approved-set store are built; the prototype is at
-`prototypes/crate`, the store at `src/store`. See [`PRODUCT.md`](PRODUCT.md) for product truth and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the technical design.
+The crate, the now-playing screen, the approved-set store and the server that joins them are
+built. The page reads the approved set and nothing else — there is no path from the library to
+the screen that does not pass through a person. See [`PRODUCT.md`](PRODUCT.md) for product truth
+and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the technical design.
+
+Not done: the crate has never been seeded (`npm run db:seed -- --write`), and nothing in this
+project has ever made a sound.
 
 ## Shape
 
@@ -27,6 +32,52 @@ old laptop in the bedroom  Chromium kiosk → platebunken-ui
 The laptop holds no state. Destroy it, swap in another, lose nothing. The server ships as a
 Docker image so that installing it is `docker compose up -d` — see ARCHITECTURE.md §3.1 for why,
 and for the one command that would destroy the thing worth keeping.
+
+## Running it
+
+```
+cp .env.example .env && $EDITOR .env
+
+npm run dev              # server + vite, proxied, opens a browser
+npm test                 # the invariants: the gate, the crate, the volume ceiling
+npm run typecheck
+
+npm run db:seed          # dry run — what seeding the crate from the seed playlist would do
+npm run db:seed -- --write
+```
+
+`npm run smoke -- --play` starts real music on a real speaker in a child's bedroom. Do not run
+it without asking.
+
+## Deploying it
+
+On the Docker host, from a checkout of this repo:
+
+```
+git clone … && cd platebunken
+cp .env.example .env && $EDITOR .env
+docker compose up -d --build
+```
+
+`compose.yml` builds from source rather than pulling a published image, which is the right
+trade for one private host: there is no registry to run, no tag to keep in step with the repo,
+and the thing that is deployed is the commit that is checked out. Publishing a multi-arch image
+so that `docker compose up -d` needs no source at all is a public-release step, not this one.
+
+One image, one container. It serves the built page and the API from one process, holds the
+SQLite store and owns the only Music Assistant credential; the laptop in the bedroom holds no
+state. There are **no runtime dependencies** — the store is `node:sqlite`, the server is
+`node:http` — so the runtime image carries no `node_modules` at all, and everything this repo
+adds on top of the Alpine base is about 300 kB.
+
+**`docker compose down -v` is the one command that destroys the product.** The `-v` removes the
+named volume, and that volume is the child's crate: which albums he owns and, far more
+importantly, which position each one sits in. Those positions are append-only, the database
+refuses to renumber them, and they are the only index a pre-reader has into his own music.
+Everything else rebuilds from the image in thirty seconds.
+
+`ansible/` configures the kiosk laptop. ARCHITECTURE.md §3.1 covers the deployment decisions and
+§8 the lockdown.
 
 ## Research
 
