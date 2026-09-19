@@ -15,6 +15,7 @@
  */
 import { MassClient } from "../ma/client.ts";
 import { createListenTracker, type Listen, type ListenTracker, type NowPlaying } from "../ma/listens.ts";
+import { createScrobbler } from "./scrobble.ts";
 import { config, canPlay } from "./config.ts";
 
 let client: MassClient | null = null;
@@ -65,6 +66,8 @@ let trackedQueue: string | null = null;
  * end, add migration v4 (a `deliberate` column on `play`, defaulting to 1 — every existing
  * row came from a press), point the favourite derivation at it, and retire `/api/played`.
  */
+const scrobbler = createScrobbler({ token: config.listenbrainz.token });
+
 function onListen(listen: Listen): void {
   const how = listen.deliberate ? "chose" : "auto";
   const of = listen.durationSec ? `/${listen.durationSec}s` : "";
@@ -72,7 +75,13 @@ function onListen(listen: Listen): void {
     `[listen] ${how} ${listen.trackNumber ?? "?"} ${listen.name} ` +
     `${listen.heardSec}s${of} ${listen.completed ? "complete" : "partial"}`,
   );
+  // Fire and forget, by contract: it never throws and never blocks. A scrobble that fails
+  // must not be able to affect what the child hears.
+  scrobbler.submit(listen);
 }
+
+/** For the parent's settings screen: is submission on, and is anything stuck? */
+export const scrobbleStatus = () => ({ enabled: scrobbler.enabled, pending: scrobbler.pending });
 
 function trackerFor(queueId: string): ListenTracker {
   if (tracker && trackedQueue === queueId) return tracker;

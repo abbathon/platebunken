@@ -75,6 +75,18 @@ export const config = {
 
   /** Shown in the parent's Device tab so a failed DHCP reservation is visible somewhere. */
   kioskIp: str("KIOSK_IP") || null,
+
+  /**
+   * ListenBrainz submission. Empty disables it entirely — silent, not broken.
+   *
+   * The token is read HERE and never leaves the server, exactly like `MA_TOKEN`: the page must
+   * never hold it. There is deliberately no username setting, because the API identifies the
+   * account by the token alone and this repository must not name the account. See the header
+   * of `scrobble.ts` and docs/research/07.
+   */
+  listenbrainz: {
+    token: str("LISTENBRAINZ_TOKEN"),
+  },
 } as const;
 
 /**
