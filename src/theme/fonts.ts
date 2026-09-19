@@ -5,8 +5,9 @@
  * is learning to read, so the face is chosen against that job and nothing else. Archivo carries
  * the wordmark and the parent's surfaces; it does not have to carry this too.
  *
- * Pure data, like the themes. The prototype pulls these from Google Fonts; **production must
- * self-host** — the kiosk has no WAN, so a webfont link is a prototype-only shortcut.
+ * Pure data, like the themes. All three faces are **self-hosted** — see
+ * `public/fonts/fonts.css`. They used to come from Google Fonts, which worked everywhere except
+ * the kiosk, which has no WAN and would have quietly rendered this in a system font.
  */
 export interface NumeralFace {
   id: string;
@@ -14,7 +15,7 @@ export interface NumeralFace {
   label: string;
   /** Full CSS stack, ending in a generic so a missing font degrades rather than disappears. */
   stack: string;
-  /** Family spec for the prototype's Google Fonts link. Not used in production. */
+  /** The family spec the self-hosted woff2 files were generated from. See public/fonts/. */
   googleFamily: string;
   /** The weight the number line renders at. Not every face ships 800. */
   weight: number;

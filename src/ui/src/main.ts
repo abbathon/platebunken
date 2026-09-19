@@ -1,14 +1,15 @@
-// PROTOTYPE — the crate.
+// The crate — the child's interface.
 //
 // This began as three crates on one route: A the wall, B the stack, C the shelf. The question
 // was which one a four-year-old could actually drive. It is answered — **A, the wall** — so B
-// and C are gone rather than kept around as options. A prototype that still carries the
-// alternatives after the decision is a prototype nobody trusts the decision of.
-import { loadCrate, recordPlay, type Album, type Crate } from "./store";
+// and C are gone rather than kept around as options. A codebase that still carries the
+// alternatives after the decision is one nobody trusts the decision of.
+import { enableCoverCache, loadCrate, loadSettings, recordPlay, saveSettings, type Album, type Crate } from "./store";
+import { markSvg } from "./marks";
 import { coverSvg } from "./cover";
 import { THEMES, applyTheme, emblemSvg, frameEl, setEntryDirection, themeFromUrl, themePicker, type Theme } from "./theme";
 import { DEFAULT_SETTINGS, adminView, type Settings } from "./admin";
-import { numeralFace, numeralVars } from "../../../src/theme/fonts.ts";
+import { numeralFace, numeralVars } from "../../theme/fonts.ts";
 import { speaker, speakerConfig, speakerPlayers, deviceInfo,
   type PlayerOption, type DeviceInfo } from "./speaker";
 
@@ -35,7 +36,7 @@ const ICON = {
 
 // ── state. What is on screen; never what is true. ───────────────────
 //
-// This block used to say "in memory only; a prototype must not depend on persistence." That
+// This block used to say "in memory only; this must not depend on persistence." That
 // stopped being true when the crate started coming from the store: what he owns, where it
 // sits and what he has played are all persisted now, and none of them are in here. What is
 // left is genuinely screen state — which shelf, which cursor, which page — and losing it on
@@ -140,13 +141,33 @@ setInterval(() => {
 
 /**
  * The speaker, if there is one. `configured: false` (no player, host or token in .env) leaves
- * the page exactly as it was — a silent prototype — rather than half-wired.
+ * the page silent rather than half-wired.
  *
  * The starting volume comes from .env, mapped into blocks, so what he sees on the rail before
  * he has touched anything is what the room will actually do. VOLUME_CEILING is enforced on the
  * server; the blocks are only ever a fraction of it.
  */
+/**
+ * Covers that survive a reboot. §9 wants this and §3.1 explains why it might not exist: on a
+ * plain-http origin from another host the browser refuses a service worker outright, and warm
+ * covers are the only thing standing between a held-down arrow key and a grid of black squares.
+ */
+enableCoverCache();
+
 const SPEAKER = await speakerConfig();
+
+/**
+ * Settings, from the store.
+ *
+ * They used to start from a hardcoded default every load, so a kiosk that reboots nightly
+ * forgot the theme, the language and the numeral face every morning — and the volume ceiling
+ * shown here was a local 50 whatever the server actually enforced, which made the one
+ * safety-critical number in the product the least trustworthy thing on the screen.
+ */
+{
+  const stored = await loadSettings();
+  if (stored) state.settings = { ...state.settings, ...(stored as Partial<Settings>) };
+}
 
 if (SPEAKER?.configured && SPEAKER.ceiling > 0) {
   state.volume = Math.max(0, Math.min(VOL_STEPS, Math.round((SPEAKER.start / SPEAKER.ceiling) * VOL_STEPS)));
@@ -188,9 +209,10 @@ applyTheme(THEME);
 /**
  * The numeral face, applied as custom properties the track list reads.
  *
- * `?font=` is here so the two can be flipped in front of the child in seconds; the parent's
- * real control is in settings, under Appearance. Production self-hosts whichever wins — the
- * kiosk has no WAN and the webfont link in index.html is a prototype-only shortcut.
+ * `?font=` is here so they can be flipped in front of the child in seconds; the parent's real
+ * control is in settings, under Appearance. All three faces are self-hosted (public/fonts/),
+ * because the kiosk has no WAN — a webfont link worked on every machine except the one the
+ * face is being chosen for.
  */
 function applyNumeralFace(id: string): void {
   for (const [k, v] of Object.entries(numeralVars(numeralFace(id)))) {
@@ -460,7 +482,7 @@ const play = (album: Album | null | undefined, track = 1) => {
    * The optimistic local update keeps the shelves right for this session even if the write
    * does not land; the store is what makes them right tomorrow morning.
    */
-  recordPlay(album.uri);
+  recordPlay(album.uri, track);
   if (CRATE) {
     CRATE.recent = [album, ...CRATE.recent.filter((a) => a.uri !== album.uri)].slice(0, SHELF_SIZE);
   }
@@ -596,10 +618,10 @@ function wall(): HTMLElement {
 // child use it. The list stays; the cover gives up some size for it.
 function nowPlaying(album: Album, track: number): HTMLElement {
   const root = el(`<section class="stage np">
-    <div class="np__art"><div class="cover" id="np-art" style="cursor:default">${art(album, "lg")}</div></div>
+    <div class="np__art"><div class="cover" id="np-art">${art(album, "lg")}</div></div>
     <div class="np__side">
       <h1 class="np__artist">${esc(album.artist.toUpperCase())}</h1>
-      <ol class="tracks"></ol>
+      <ol class="tracks" data-marks="${state.settings.favouritesShown ? 1 : 0}"></ol>
       <div class="transport"></div>
     </div>
   </section>`);
@@ -615,8 +637,22 @@ function nowPlaying(album: Album, track: number): HTMLElement {
     list.append(el(`<li class="tracks__none">Music Assistant returned no tracks for this album.</li>`));
   }
   for (const t of album.tracks) {
+    /**
+     * The mark for a track he keeps choosing — §4.2's number line, and nothing else about it
+     * changes. It is drawn AFTER the title, at the quiet end of the row, so the numeral still
+     * leads and the column still reads as a straight evenly-spaced line. It never reorders and
+     * never reflows: an album he has played to death looks exactly like one he has not, except
+     * that two of the rows carry a small shape.
+     *
+     * Derived, never declared. There is no "like" button and there must not be one — the
+     * product does four things and refuses the fifth, and a mark he could chase would turn
+     * listening into a game with a score.
+     */
+    const fav = t.favourite && state.settings.favouritesShown
+      ? `<span class="track__fav">${markSvg(state.settings.favouriteMark)}</span>`
+      : "";
     const row = el(`<li><button class="track" aria-current="${t.n === track}" data-focus="${t.n === state.focusTrack ? 1 : 0}">
-      <span class="track__n">${t.n}</span><span class="track__t">${esc(t.title)}</span></button></li>`);
+      <span class="track__n">${t.n}</span><span class="track__t">${esc(t.title)}</span>${fav}</button></li>`);
     row.querySelector("button")!.addEventListener("click", () => play(album, t.n));
     list.append(row);
   }
@@ -671,8 +707,8 @@ const volumeBlocks = (): HTMLElement =>
   el(`<div class="vol__blocks">${Array.from({ length: VOL_STEPS },
     (_, i) => `<span class="vol__b" data-on="${i < state.volume ? 1 : 0}"></span>`).join("")}</div>`);
 
-// ── prototype readout: obviously not part of the design being judged ──
-/** Step to the next theme. Backs both the picker's keyboard route and the prototype bar. */
+// ── development readout: not part of the design being judged ──
+/** Step to the next theme. Backs both the picker's keyboard route and the dev bar. */
 function hopTheme(d: number): void {
   const i = (THEMES.findIndex((t) => t.id === THEME.id) + d + THEMES.length) % THEMES.length;
   setTheme(THEMES[i]!);
@@ -783,7 +819,7 @@ function onKey(e: KeyboardEvent): void {
   const tag = (e.target as HTMLElement)?.tagName ?? "";
   if (/^(INPUT|TEXTAREA)$/.test(tag)) return;
 
-  // Theme switching from the keyboard is prototype chrome; the discs are the real control.
+  // Theme switching from the keyboard is dev chrome; the discs are the real control.
   if (e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
     e.preventDefault();
     hopTheme(e.key === "ArrowUp" ? -1 : 1);
@@ -891,6 +927,9 @@ function render() {
       onClose: goHome,
       onChange: (patch) => {
         state.settings = { ...state.settings, ...patch };
+        // Straight to the store. Settings that only lived here were settings the kiosk forgot
+        // on its next reboot, which for a machine that reboots nightly is every morning.
+        saveSettings(patch as Record<string, unknown>);
         if (patch.theme) setTheme(THEMES.find((t) => t.id === patch.theme) ?? THEME);
         if (patch.numeralFace) applyNumeralFace(patch.numeralFace);
         if (patch.volumeCeiling !== undefined) state.volume = Math.min(state.volume, VOL_STEPS);

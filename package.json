@@ -4,14 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "node --env-file=.env scripts/dev.ts",
-    "build": "vite build prototypes/crate",
+    "build": "vite build src/ui",
     "serve": "node --env-file=.env src/server/index.ts",
     "start": "node src/server/index.ts",
     "prototype": "node --env-file=.env scripts/dev.ts",
     "smoke": "node --env-file=.env scripts/smoke.ts",
     "typecheck": "tsc --noEmit",
     "ma:user": "node --env-file=.env scripts/ma-user.ts",
-    "snapshot": "node --env-file=.env scripts/snapshot.ts",
     "test": "node --test 'src/**/*.test.ts'",
     "db:seed": "node --env-file=.env scripts/db-seed.ts"
   },

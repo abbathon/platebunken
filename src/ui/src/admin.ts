@@ -1,13 +1,14 @@
-// PROTOTYPE — the parent's settings, on the device.
+// The parent's settings, on the device.
 //
 // This is the one surface in the product that is made of text, so it is the one that has to be
 // bilingual: PRODUCT.md commits to Norwegian and English on every parent surface from the start,
 // and the child's UI carries no text, which means this section is what that commitment is about.
 //
-// Nothing here persists. A prototype must not depend on persistence, and on the kiosk every one
+// These persist in the store now, through /api/settings. On the kiosk every one
 // of these lands in `.env`, the store, or an MQTT topic Home Assistant owns — never in the page.
 import { THEMES, type Theme } from "./theme";
-import { NUMERAL_FACES } from "../../../src/theme/fonts.ts";
+import { NUMERAL_FACES } from "../../theme/fonts.ts";
+import { MARKS, markById, type MarkId } from "./marks";
 
 /**
  * **This is a child gate, not security.** Four digits compared in front-end JavaScript stops a
@@ -15,7 +16,7 @@ import { NUMERAL_FACES } from "../../../src/theme/fonts.ts";
  * lockdown (§8), and the fact that no credential for Music Assistant, Qobuz or the store is ever
  * in this page. Do not let this grow into something anyone is asked to trust.
  */
-const PROTOTYPE_PIN = "1234";
+const GATE_PIN = "1234";
 
 export type Lang = "nb" | "en";
 
@@ -23,6 +24,16 @@ export interface Settings {
   lang: Lang;
   theme: string;
   numeralFace: string;
+  /** Which shape marks a track he keeps choosing. See marks.ts. */
+  favouriteMark: MarkId;
+  /** Marks off entirely — some children chase a mark, and this is the way back out. */
+  favouritesShown: boolean;
+  /**
+   * Read-only, and sent by the server. It is a hearing-safety limit set from an SPL
+   * measurement at the pillow, so it lives in the deployment's .env and not behind a
+   * four-digit gate. This screen used to show a local default of 50 whatever the server
+   * actually enforced, which is worse than showing nothing.
+   */
   volumeCeiling: number;
   volumeStart: number;
   sources: { listenbrainz: boolean; lastfm: boolean; deezer: boolean; charts: boolean };
@@ -33,6 +44,8 @@ export const DEFAULT_SETTINGS: Settings = {
   lang: "nb",
   theme: "natt",
   numeralFace: "archivo",
+  favouriteMark: "heart",
+  favouritesShown: true,
   volumeCeiling: 50,
   volumeStart: 15,
   sources: { listenbrainz: true, lastfm: true, deezer: true, charts: false },
@@ -49,6 +62,12 @@ const STRINGS: Dict = {
   tabSources:   ["Kilder", "Sources"],
   tabShelves:   ["Hyller", "Shelves"],
   tabLook:      ["Utseende", "Appearance"],
+  favMark:      ["Merke for yndlingsspor", "Favourite track mark"],
+  favMarkHelp:  ["Spor han velger igjen og igjen får et merke i tallrekka. Utledet av hva han faktisk spiller — det finnes ingen «lik»-knapp, og det skal det ikke gjøre. Merket flytter aldri noe.",
+                 "Tracks he chooses again and again get a mark in the number line. Derived from what he actually plays \u2014 there is no 'like' button and there must not be one. The mark never moves anything."],
+  favOff:       ["Vis merker", "Show marks"],
+  ceilingRO:    ["Settes ved utrulling, fra lydmåling ved puten. Endres i .env.",
+                 "Set at deploy time from an SPL measurement at the pillow. Change it in .env."],
   tabLang:      ["Språk", "Language"],
   ceiling:      ["Volumtak", "Volume ceiling"],
   ceilingHelp:  ["Håndheves oppstrøms for alt barnet kan nå. Kalibreres med lydmåler ved puten — mål 75 dBA.",
@@ -88,8 +107,8 @@ const STRINGS: Dict = {
   language:     ["Språk på foreldreflatene", "Language on the parent surfaces"],
   langHelp:     ["Barnets grensesnitt har ingen tekst, så dette gjelder bare her og i varslinger.",
                  "The child's interface carries no text, so this governs only this screen and notifications."],
-  notStored:    ["Ingenting lagres i prototypen. På kiosken havner dette i .env, databasen eller Home Assistant.",
-                 "Nothing is stored in the prototype. On the kiosk these land in .env, the store, or Home Assistant."],
+  notStored:    ["Lagres i databasen. Volumtaket settes ved utrulling og kan ikke endres her.",
+                 "Stored in the database. The volume ceiling is set at deploy time and cannot be changed here."],
 };
 
 const t = (k: string, lang: Lang) => STRINGS[k]?.[lang === "nb" ? 0 : 1] ?? k;
@@ -157,7 +176,7 @@ function gate(ctx: AdminContext): HTMLElement {
     entry += d;
     paint();
     if (entry.length === 4) {
-      const ok = entry === PROTOTYPE_PIN;
+      const ok = entry === GATE_PIN;
       setTimeout(() => { if (!ok) { entry = ""; paint(true); } ctx.onUnlock(ok); }, 160);
     }
   };
@@ -317,8 +336,13 @@ function panel(ctx: AdminContext): HTMLElement {
   const set = ctx.onChange;
 
   if (ctx.tab === "sound") {
-    pane.append(row(t("ceiling", lang), t("ceilingHelp", lang), slider(s.volumeCeiling, 10, 100, (n) => set({ volumeCeiling: n }))));
-    pane.append(row(t("startVol", lang), "", slider(s.volumeStart, 0, 60, (n) => set({ volumeStart: n }))));
+    // A fact, not a control. The slider that used to be here read 50 no matter what the
+    // server enforced, which made the one safety number in the product the least trustworthy
+    // thing on the screen.
+    pane.append(row(t("ceiling", lang), t("ceilingHelp", lang),
+      el(`<span class="device__value">${s.volumeCeiling}</span>`)));
+    pane.append(el(`<p class="set__help">${esc(t("ceilingRO", lang))}</p>`));
+    pane.append(row(t("startVol", lang), "", el(`<span class="device__value">${s.volumeStart}</span>`)));
     pane.append(row(t("speaker", lang), t("speakerHelp", lang), playerPicker(ctx)));
   } else if (ctx.tab === "sources") {
     const g = el(`<div class="chips"></div>`);
@@ -341,6 +365,26 @@ function panel(ctx: AdminContext): HTMLElement {
       <div class="numeral-preview__digits">1234567890</div>
       <p class="numeral-preview__note">${esc(face.note)}</p>
     </div>`));
+
+    // The favourite mark. Shown as the shapes themselves rather than a list of names: the
+    // parent is choosing a picture, and a row of words is not the thing being chosen.
+    pane.append(row(t("favOff", lang), "",
+      toggle(s.favouritesShown ? "På / On" : "Av / Off", s.favouritesShown, (v) => set({ favouritesShown: v }))));
+    if (s.favouritesShown) {
+      const picker = el(`<div class="marks"></div>`);
+      for (const m of MARKS) {
+        const name = m.label[lang === "nb" ? 0 : 1];
+        const b = el(`<button class="marks__opt" aria-pressed="${m.id === s.favouriteMark}" aria-label="${esc(name)}">
+          <span class="marks__glyph">${m.svg ?? `<span class="marks__bar"></span>`}</span>
+          <span class="marks__name">${esc(name)}</span>
+        </button>`);
+        if (m.id === s.favouriteMark) b.dataset.on = "1";
+        b.addEventListener("click", () => set({ favouriteMark: m.id }));
+        picker.append(b);
+      }
+      pane.append(row(t("favMark", lang), t("favMarkHelp", lang), picker));
+      pane.append(el(`<p class="set__help">${esc(markById(s.favouriteMark).note[lang === "nb" ? 0 : 1])}</p>`));
+    }
   } else if (ctx.tab === "device") {
     pane.append(devicePane(ctx));
   } else {

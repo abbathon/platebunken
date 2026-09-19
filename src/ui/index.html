@@ -3,12 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>Platebunken — crate prototype</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- Prototype only: the kiosk has no WAN, so production self-hosts whichever numeral face
-         wins. The candidates are declared in src/theme/fonts.ts. -->
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=Andika:wght@400;700&family=Lexend:wght@400;600;800&display=swap" rel="stylesheet" />
+    <title>Platebunken</title>
+    <!-- Self-hosted. THE KIOSK HAS NO WAN: a <link> to fonts.googleapis.com worked on every
+         machine except the only one that matters, and the numeral face would have silently
+         fallen back to a system font on the device it was chosen for. All three candidates
+         ship, not just the incumbent, so the comparison can be run in the room it matters in.
+         Declared in src/theme/fonts.ts; the files are generated per public/fonts/fonts.css. -->
+    <link rel="preload" href="/fonts/archivo-800-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/fonts/fonts.css" />
     <!-- Copies of brand/. Vite serves this directory's root and cannot reach outside it;
          regenerate both with the recipe in brand/README.md if the mark changes. -->
     <link rel="icon" href="/favicon.ico" sizes="32x32" />

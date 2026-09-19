@@ -11,9 +11,11 @@ It does four things: **browse, play, volume, skip.** It refuses the fifth.
 ## Status
 
 The crate, the now-playing screen, the approved-set store and the server that joins them are
-built. The page reads the approved set and nothing else — there is no path from the library to
-the screen that does not pass through a person. See [`PRODUCT.md`](PRODUCT.md) for product truth
-and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the technical design.
+built. The page (`src/ui`) reads the approved set and nothing else — there is no path from the
+library to the screen that does not pass through a person. Settings persist, the numeral faces
+are self-hosted, and a service worker keeps covers warm across reboots. See
+[`PRODUCT.md`](PRODUCT.md) for product truth and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+for the technical design.
 
 Not done: the crate has never been seeded (`npm run db:seed -- --write`), and nothing in this
 project has ever made a sound.

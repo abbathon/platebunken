@@ -37,4 +37,4 @@ function stop(code: number): void {
 for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => stop(0));
 
 run("server", process.execPath, ["--env-file=.env", "src/server/index.ts"]);
-run("vite", "npx", ["vite", "prototypes/crate", "--open"]);
+run("vite", "npx", ["vite", "src/ui", "--open"]);

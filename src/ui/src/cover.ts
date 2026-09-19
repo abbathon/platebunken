@@ -1,4 +1,4 @@
-// PROTOTYPE: procedural cover art, so this runs offline and ships nobody else's artwork.
+// Procedural cover art, so this runs offline and ships nobody else's artwork.
 // Real covers come from Music Assistant's imageproxy at the exact tile size.
 import type { Album } from "./store";
 

@@ -145,7 +145,7 @@ test("the backdrop moves slowly or not at all", () => {
 test("a motif only uses motion classes the stylesheet actually defines", () => {
   // themes.ts is pure data and cannot see the CSS. A class name typo would fail silently as a
   // backdrop that simply never moves, which is exactly the kind of bug nobody reports.
-  const css = readFileSync(new URL("../../prototypes/crate/src/style.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../ui/src/style.css", import.meta.url), "utf8");
   for (const c of MOTIF_MOTION) {
     assert.ok(css.includes(`#motif .${c}`), `stylesheet defines no motion for "${c}"`);
   }
@@ -173,7 +173,7 @@ test("a plate shape never changes what is possible to hit", () => {
   // §4.5 puts a hard 76px floor under every target because tap accuracy at this age is 57%.
   // The clip path is painted on a layer inside the button; applying it to the control itself
   // would clip the hit area with it. If this ever ends up on `.btn`, the floor is gone.
-  const css = readFileSync(new URL("../../prototypes/crate/src/style.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../ui/src/style.css", import.meta.url), "utf8");
   const onControl = /\.btn\s*\{[^}]*clip-path/.test(css) || /\.picker__dot\s*\{[^}]*clip-path/.test(css);
   assert.equal(onControl, false, "clip-path must be on the plate layer, never on the control");
 });

@@ -32,7 +32,6 @@ RUN npm ci
 
 COPY tsconfig.json ./
 COPY src ./src
-COPY prototypes ./prototypes
 
 # Fail the build on a type error rather than shipping it. This is the only place the check
 # is enforced automatically, and the page is the half that cannot be fixed by restarting.
@@ -50,8 +49,14 @@ ENV NODE_ENV=production \
     DATABASE_PATH=/data/platebunken.sqlite
 
 # The server's own source, and the built page. No node_modules: see above.
+#
+# Only the directories that actually RUN here. `src/ui` is the page's TypeScript, which Vite
+# has already turned into dist/public in the build stage — shipping it as well would put source
+# in the image that nothing executes, and an image should contain what it runs and nothing more.
 COPY package.json ./
-COPY src ./src
+COPY src/ma ./src/ma
+COPY src/store ./src/store
+COPY src/server ./src/server
 COPY --from=build /app/dist/public ./dist/public
 
 # The store's directory, owned by the unprivileged user the process runs as. A named volume

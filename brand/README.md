@@ -40,7 +40,7 @@ library in this project and no reason to add one. The script lives in the commit
 them — it opens `favicon.svg` at each size, screenshots with a transparent background, then packs
 16/32/48 into an ICO by hand (header, directory, PNG payloads).
 
-`prototypes/crate/public/` holds **copies** of `favicon.svg`, `favicon.ico` and `icon-180.png`:
+`src/ui/public/` holds **copies** of `favicon.svg`, `favicon.ico` and `icon-180.png`:
 Vite serves that directory's root and cannot reach outside it. Copy them across again if the mark
 changes.
 

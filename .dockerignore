@@ -7,8 +7,10 @@ ansible/group_vars/kiosk.yml
 secrets.*
 config.local.*
 
-# A dump of a private music library.
-prototypes/crate/public/library.json
+# A dump of a private music library. Its producer is gone, but the page's public/ directory
+# is copied into the build wholesale, so this stays as a guard against it coming back.
+src/ui/public/library.json
+src/ui/public/library.json
 
 # The store itself. It belongs in a volume; an image that carried a copy of the child's crate
 # would be an image that cannot be shared and a deploy that silently reverts his positions.

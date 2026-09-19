@@ -1,6 +1,6 @@
-// PROTOTYPE glue for the theme system. The themes themselves live in src/theme/themes.ts,
-// which is pure data and outlives this prototype; only the DOM work belongs here.
-import { THEMES, cornerSvg, emblemSvg, motifSvg, themeById, themeVars, type Theme } from "../../../src/theme/themes.ts";
+// DOM glue for the theme system. The themes themselves live in src/theme/themes.ts, which is
+// pure data with its own tests; only the DOM work belongs here.
+import { THEMES, cornerSvg, emblemSvg, motifSvg, themeById, themeVars, type Theme } from "../../theme/themes.ts";
 
 export { THEMES, emblemSvg, type Theme };
 

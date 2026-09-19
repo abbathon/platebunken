@@ -21,6 +21,11 @@ npm run dev              # src/server/ + vite, opens a browser   (`npm run proto
 It no longer runs on its own. The page reads `/api/crate` from `src/server/`, which holds the
 store — that is the point of the change, not an inconvenience of it.
 
+It also no longer lives in `prototypes/`. The directory name outlived the question it was named
+for: A, B and C were three crates on one route, the parent chose A, and everything since has been
+built on that answer. A directory that calls the product a prototype invites everyone who reads
+it to treat the decisions inside as provisional.
+
 ## What is on screen
 
 - **The crate.** Nine covers, page flip, an arrow on each side pointing the way it takes you.
@@ -86,8 +91,12 @@ npm run db:seed          # dry run: what seeding the store from the seed playlis
 npm run db:seed -- --write
 ```
 
-`?all=1` is gone with the snapshot it belonged to: there is no "whole library" left to show.
-`npm run snapshot` still exists, but it only feeds design work now — nothing reads its output.
+`?all=1` is gone with the snapshot it belonged to: there is no "whole library" left to show, and
+`npm run snapshot` is deleted rather than kept. It wrote `public/library.json`, which nothing has
+read since the store landed — and `public/` is copied into the build wholesale, so a dump of a
+private music library was being baked into `dist/` with one `.dockerignore` line standing between
+it and a published image. The ignore rules stay as guards; the thing that produced the file does
+not.
 
 The page holds no token. Cover URLs point at MA's `/imageproxy/<proxy_id>`, which serves
 unauthenticated, and they are stored **host-less** so the dev server proxies them through the
@@ -126,11 +135,11 @@ Not caveats — a work list. Each line names the thing that retires it.
 | ~~Reads the library, not the approved set~~ | — | **Done.** `/api/crate`, and the mock set deleted |
 | ~~No error handling~~ | — | **Done.** §10's sleepy state, after three missed fetches |
 | ~~Play history resets on reload~~ | — | **Done.** The `play` log in the store (§5.1) |
-| **Settings do not persist** | Theme, language and numeral face are still in page memory, so the kiosk forgets them on every reboot | The store, or `.env` — §4.6 says which value belongs where, and nothing has been written yet |
+| ~~Settings do not persist~~ | — | **Done.** A `setting` table and `/api/settings`. The volume ceiling deliberately stays in `.env` |
 | **No tests in this directory** | Every visual regression here has been invisible to the type checker | Screenshotting it in Chromium is what is actually used; that is a habit, not a test |
-| **Google Fonts in `index.html`** | **The kiosk has no WAN.** The numeral face will not load on the device it was chosen for | Self-hosting the faces as subset `woff2` — all three, not just the winner, so the comparison can be run in the room it matters in |
-| **No service worker** | Covers are cached only by Chromium's own disk cache, and a page that reloads while the server is away shows Chromium's error screen | Workbox + `navigator.storage.persist()`, once the origin counts as secure — ARCHITECTURE.md §3.1 |
-| **The name `prototypes/`** | The directory disclaims the product that lives in it | The parent's call: promote to `src/ui/`, or rewrite. Not moved until they say so |
+| ~~Google Fonts in `index.html`~~ | — | **Done.** All three faces self-hosted as `woff2` in `public/fonts/`, latin + latin-ext, `font-display: block` |
+| ~~No service worker~~ | — | **Done.** `public/sw.js`, hand-written. Still needs a secure origin to exist at all — ARCHITECTURE.md §3.1 |
+| ~~The name `prototypes/`~~ | — | **Done.** Moved to `src/ui/`; it stopped being a prototype when the A/B/C question closed |
 
 ## Paid for already — do not rediscover these
 

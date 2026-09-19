@@ -32,7 +32,13 @@ __pycache__/
 .impeccable/config.local.json
 
 # A dump of a private music library — never commit.
-prototypes/crate/public/library.json
+#
+# Nothing produces this any more: scripts/snapshot.ts was deleted once the page started
+# reading the approved set from the store. The rule stays as a guard, because the file used to
+# land in the page's public/ directory, which the build copies wholesale — one ignore line was
+# all that stood between a private library dump and a published image.
+src/ui/public/library.json
+src/ui/public/library.json
 
 # Ansible inventory and vars — hostname, address, SSID, PSK. Never commit.
 ansible/inventory.yml
