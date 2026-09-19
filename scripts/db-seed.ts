@@ -13,7 +13,7 @@
  * same album for the next decade, so this script refuses to guess.
  */
 import { MassClient } from "../src/ma/client.ts";
-import { fromMassAlbum, approve, counts, crate, ensureProfile, release, suggest, upsertAlbum } from "../src/store/crate.ts";
+import { fromMassAlbum, approve, counts, crate, ensureProfile, release, setTracks, suggest, upsertAlbum } from "../src/store/crate.ts";
 import { openStore } from "../src/store/db.ts";
 
 const write = process.argv.includes("--write");
@@ -72,15 +72,38 @@ if (before.inCrate > 0) {
   console.log(`crate already holds ${before.inCrate} albums; new seed albums will be APPENDED, never inserted.`);
 }
 
-let fresh = 0, already = 0, noArt = 0;
+let fresh = 0, already = 0, noArt = 0, noTracks = 0;
 for (const [uri, raw] of albums) {
   const a = fromMassAlbum(raw);
   if (!a.coverProxyId) noArt++;
   const known = db.prepare(`SELECT 1 FROM approved WHERE profile_id = ? AND uri = ?`).get(profileId, uri);
-  if (known) { already++; continue; }
-  fresh++;
+  if (known) already++; else fresh++;
+
+  /**
+   * The number line, cached into the store.
+   *
+   * Refreshed even for an album already in the crate, so a re-run backfills albums seeded
+   * before tracks were stored and picks up a re-tag. It is the only part of an album that is
+   * allowed to change — its position never is.
+   *
+   * The track uri is what play_media's `start_item` takes, so starting an album at track 7 is
+   * one command rather than a play followed by a jump.
+   */
+  let tracks: { n: number; title: string; uri: string | null }[] = [];
+  try {
+    const raw = await client.albumTracks(a.itemId, a.provider);
+    tracks = raw.map((t, i) => ({ n: t.track_number ?? i + 1, title: t.name, uri: t.uri ?? null }));
+  } catch (e) {
+    // An album whose tracks will not load still belongs in the crate: it plays from its own
+    // uri, and the number line is what is missing, not the record.
+    console.warn(`  ! no track list for ${a.artist} — ${a.title}: ${(e as Error).message}`);
+  }
+  if (tracks.length === 0) noTracks++;
+
   if (!write) continue;
   upsertAlbum(db, a);
+  if (tracks.length) setTracks(db, uri, tracks);
+  if (known) continue;
   suggest(db, uri, "seed", "seed playlist");
   approve(db, profileId, uri);
 }
@@ -96,6 +119,7 @@ if (write) {
 
 console.log(`  ${fresh} new, ${already} already in the crate`);
 if (noArt) console.log(`  ${noArt} with no artwork — invisible in a cover-art interface; run the beets pass`);
+if (noTracks) console.log(`  ${noTracks} with no track list — the album plays, but its number line is empty`);
 
 const after = counts(db, profileId);
 console.log(`\ncrate: ${after.inCrate} albums, ${after.waitingToRelease} approved and waiting, ${after.pending} in the review queue`);

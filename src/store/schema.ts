@@ -114,4 +114,43 @@ export const MIGRATIONS: readonly string[] = [
     SELECT RAISE(ABORT, 'crate is append-only: withdraw sets withdrawn_at, it does not delete');
   END;
   `,
+
+  /* v2 ─────────────────────────────────────────────────────────────────── */ `
+  -- The number line (§4.2), and the uri that starts a record part-way through.
+  --
+  -- These are cached from Music Assistant, not owned here. The alternative was to ask MA
+  -- for an album's tracks when the child opens it, and that fails exactly when §10 says it
+  -- must not: MA unreachable is supposed to mean "sleepy crate, covers from cache", and a
+  -- track list fetched on open would turn it into an album that opens onto nothing.
+  --
+  -- Unlike a crate position, a track row is NOT append-only. A re-tag can renumber an
+  -- album, and freezing the first answer would mean the number line permanently disagreeing
+  -- with what actually plays. Positions are what the child memorises; track numbers belong
+  -- to the record.
+  CREATE TABLE track (
+    album_uri TEXT NOT NULL REFERENCES album(uri) ON DELETE CASCADE,
+    n         INTEGER NOT NULL,
+    title     TEXT NOT NULL,
+    -- play_media's documented start_item parameter. NULL falls back to playing the album and
+    -- jumping, which is two commands and a brief burst of the wrong track.
+    uri       TEXT,
+    PRIMARY KEY (album_uri, n)
+  ) STRICT;
+
+  -- Every play, appended. The *recent* and *most-played* shelves are built from this and
+  -- from nothing else — there is no separate tracking, because what he played is what he
+  -- played. Before this table the two shelves lived in page memory and reset on reload,
+  -- which on a kiosk that reboots nightly meant they were empty every morning.
+  --
+  -- A log, not a counter: a counter cannot answer "recent", and it cannot be recomputed if
+  -- the shelf rules ever change. Rows are small and a four-year-old is not high-volume.
+  CREATE TABLE play (
+    profile_id TEXT NOT NULL REFERENCES profile(id),
+    uri        TEXT NOT NULL REFERENCES album(uri),
+    played_at  TEXT NOT NULL
+  ) STRICT;
+
+  CREATE INDEX play_recent ON play(profile_id, played_at DESC);
+  CREATE INDEX play_album  ON play(profile_id, uri);
+  `,
 ];

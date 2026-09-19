@@ -285,3 +285,118 @@ export function counts(db: DatabaseSync, profileId: string): Counts {
         WHERE p.profile_id = ? AND a.cover_proxy_id IS NULL`, profileId),
   };
 }
+
+/* ── The number line, and what has been played ─────────────────────────── */
+
+export interface TrackInput {
+  n: number;
+  title: string;
+  /** `play_media`'s documented `start_item`. Null means the two-command fallback. */
+  uri?: string | null;
+}
+
+export interface StoredTrack {
+  n: number;
+  title: string;
+  uri: string | null;
+}
+
+/**
+ * Replace an album's track list.
+ *
+ * Replace, not merge: a re-tag that drops a bonus track must drop it here too, or the number
+ * line grows a number that plays nothing. This is the one place in the store where old rows
+ * are deleted, and it is safe precisely because tracks are cached from Music Assistant rather
+ * than owned here — unlike a crate position, which the triggers refuse to let anyone touch.
+ */
+export function setTracks(db: DatabaseSync, albumUri: string, tracks: readonly TrackInput[]): void {
+  db.exec("BEGIN");
+  try {
+    db.prepare(`DELETE FROM track WHERE album_uri = ?`).run(albumUri);
+    const ins = db.prepare(`INSERT INTO track (album_uri, n, title, uri) VALUES (?, ?, ?, ?)`);
+    // Last write wins on a duplicate number rather than throwing: a malformed tag must not
+    // be able to fail a seed run, and a duplicate n is a tagging bug, not a store bug.
+    const seen = new Set<number>();
+    for (const t of tracks) {
+      if (seen.has(t.n)) continue;
+      seen.add(t.n);
+      ins.run(albumUri, t.n, t.title, t.uri ?? null);
+    }
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+export function tracks(db: DatabaseSync, albumUri: string): StoredTrack[] {
+  return (db.prepare(`SELECT n, title, uri FROM track WHERE album_uri = ? ORDER BY n ASC`)
+    .all(albumUri) as Record<string, unknown>[])
+    .map((r) => ({ n: Number(r.n), title: r.title as string, uri: (r.uri as string | null) ?? null }));
+}
+
+/** Every album's tracks in one query, keyed by uri. The crate endpoint sends the lot. */
+export function allTracks(db: DatabaseSync, profileId: string): Map<string, StoredTrack[]> {
+  const rows = db.prepare(
+    `SELECT t.album_uri, t.n, t.title, t.uri
+       FROM track t JOIN approved p ON p.uri = t.album_uri
+      WHERE p.profile_id = ? AND p.position IS NOT NULL AND p.withdrawn_at IS NULL
+      ORDER BY t.album_uri, t.n ASC`,
+  ).all(profileId) as Record<string, unknown>[];
+  const out = new Map<string, StoredTrack[]>();
+  for (const r of rows) {
+    const uri = r.album_uri as string;
+    let list = out.get(uri);
+    if (!list) out.set(uri, (list = []));
+    list.push({ n: Number(r.n), title: r.title as string, uri: (r.uri as string | null) ?? null });
+  }
+  return out;
+}
+
+/**
+ * He played a record. Appended, never counted in place.
+ *
+ * Silently ignores an album that is not in this profile's crate. The page is the caller and
+ * principle 4 says a failure there must not reach the child — but more than that, an album
+ * outside the crate has no business appearing on a shelf, and a shelf is the only thing this
+ * log feeds. The gate holds on the way in *and* on the way back out.
+ */
+export function recordPlay(db: DatabaseSync, profileId: string, uri: string): boolean {
+  const inCrate = db.prepare(
+    `SELECT 1 FROM approved WHERE profile_id = ? AND uri = ? AND position IS NOT NULL AND withdrawn_at IS NULL`,
+  ).get(profileId, uri);
+  if (!inCrate) return false;
+  db.prepare(`INSERT INTO play (profile_id, uri, played_at) VALUES (?, ?, ?)`).run(profileId, uri, now());
+  return true;
+}
+
+/**
+ * Distinct albums, most recently played first. Feeds the *recent* shelf.
+ *
+ * rowid breaks the tie, not uri. played_at is an ISO string with millisecond resolution, and
+ * two plays can land in the same millisecond — a held Enter key does exactly that. Ordering on
+ * the timestamp alone then leaves SQLite free to return either, so the shelf reshuffles on
+ * reload for no reason the child can see. rowid is the order they actually happened in.
+ */
+export function recentlyPlayed(db: DatabaseSync, profileId: string, limit: number): string[] {
+  return (db.prepare(
+    `SELECT uri, MAX(played_at) AS last, MAX(rowid) AS seq FROM play WHERE profile_id = ?
+      GROUP BY uri ORDER BY last DESC, seq DESC LIMIT ?`,
+  ).all(profileId, limit) as { uri: string }[]).map((r) => r.uri);
+}
+
+/**
+ * Most played first. Feeds the *most-played* shelf.
+ *
+ * A tie breaks on the more recent play, not on uri: two albums played twice each should put
+ * the one he reached for today in front, and alphabetical order would be an arbitrary answer
+ * that never changes. rowid breaks a tie in the timestamp itself, for the reason in
+ * `recentlyPlayed` — without it a shelf of equally-played albums reshuffles on every reload.
+ */
+export function mostPlayed(db: DatabaseSync, profileId: string, limit: number): { uri: string; plays: number }[] {
+  return (db.prepare(
+    `SELECT uri, COUNT(*) AS plays, MAX(played_at) AS last, MAX(rowid) AS seq FROM play WHERE profile_id = ?
+      GROUP BY uri ORDER BY plays DESC, last DESC, seq DESC LIMIT ?`,
+  ).all(profileId, limit) as Record<string, unknown>[])
+    .map((r) => ({ uri: r.uri as string, plays: Number(r.plays) }));
+}
