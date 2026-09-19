@@ -167,8 +167,25 @@ export function reviewQueue(db: DatabaseSync, limit = 50): QueueEntry[] {
  * caller can reach the child's crate by inserting an album directly.
  */
 export function approve(db: DatabaseSync, profileId: string, uri: string): void {
-  const seen = db.prepare(`SELECT 1 FROM candidate WHERE uri = ?`).get(uri);
-  if (!seen) throw new Error(`Refusing to approve ${uri}: it was never in the review queue.`);
+  const rows = db.prepare(`SELECT decision FROM candidate WHERE uri = ?`).all(uri) as { decision: string | null }[];
+  if (!rows.length) throw new Error(`Refusing to approve ${uri}: it was never in the review queue.`);
+
+  /**
+   * A rejection is a decision, and approving past it is not "changing your mind" — it is two
+   * records disagreeing. Without this the UPDATE below is a no-op (it matches only undecided
+   * rows) while the INSERT still queues the album for the crate, leaving `candidate` saying
+   * rejected and `approved` saying otherwise. The album then appears in front of the child.
+   *
+   * Found by probing the gate before building /admin on top of it, which is precisely the
+   * caller that produces this: a stale phone tab, a double tap, a back button.
+   *
+   * An album may arrive from several sources and each is its own row (see schema v1), so the
+   * test is whether ANY candidacy is still open or already approved. To genuinely change your
+   * mind, `suggest()` it again — that is a new candidacy, and it is visible as one.
+   */
+  if (!rows.some((r) => r.decision === null || r.decision === "approved")) {
+    throw new Error(`Refusing to approve ${uri}: every suggestion of it was rejected. Suggest it again first.`);
+  }
   const t = now();
   db.exec("BEGIN");
   try {
@@ -184,10 +201,70 @@ export function approve(db: DatabaseSync, profileId: string, uri: string): void 
   }
 }
 
+/**
+ * Withdraw a rejection, putting the album back in the queue.
+ *
+ * This is the parent's undo on /admin, and it is deliberately NOT `suggest()` again. Two
+ * reasons, the first found by driving the real page:
+ *
+ *   - `suggest` is ON CONFLICT DO NOTHING and `source` is constrained to four values, so
+ *     re-suggesting an album that was already rejected from that same source is a silent
+ *     no-op. The undo button did nothing at all, and said it had worked.
+ *   - `suggest` must never resurrect a rejection, because the curation worker calls it every
+ *     day. If it did, every album the parent has ever turned down would come back forever.
+ *
+ * So reopening is its own verb, called only by a person who is undoing themselves. It clears
+ * the rejection rather than recording a competing candidacy: a rejected row sitting beside an
+ * open one is two records disagreeing, which is the same fault this module refuses elsewhere.
+ *
+ * An APPROVED candidacy is never touched — undo is for a rejection, not for taking an album
+ * back out of the crate. That is `withdraw()`, and it works differently on purpose.
+ */
+export function reopenRejected(db: DatabaseSync, uri: string): boolean {
+  const out = db.prepare(
+    `UPDATE candidate SET decision = NULL, decided_at = NULL
+      WHERE uri = ? AND decision = 'rejected'`,
+  ).run(uri);
+  return Number(out.changes) > 0;
+}
+
 /** Rejection closes the queue entries. It never touches an already-approved album. */
 export function reject(db: DatabaseSync, uri: string): void {
   db.prepare(`UPDATE candidate SET decision = 'rejected', decided_at = ? WHERE uri = ? AND decision IS NULL`)
     .run(now(), uri);
+}
+
+/**
+ * The last albums turned down, newest first.
+ *
+ * Exists because `approve()` refuses to reach past a rejection, which makes a mis-tapped ✗ on
+ * a phone unrecoverable unless something shows what was just rejected. The way back is a NEW
+ * candidacy — `suggest()` again — so the decision that was taken stays on the record and the
+ * change of mind is visible as its own row rather than as an edit.
+ *
+ * Only albums with no open or approved candidacy are listed: one still in the queue from
+ * another source has not actually been turned down.
+ */
+export function recentlyRejected(db: DatabaseSync, limit = 10): QueueEntry[] {
+  const rows = db.prepare(
+    `SELECT c.source, c.source_detail, c.decided_at AS suggested_at, a.*
+       FROM candidate c JOIN album a ON a.uri = c.uri
+      WHERE c.decision = 'rejected'
+        AND NOT EXISTS (
+          SELECT 1 FROM candidate o
+           WHERE o.uri = c.uri AND (o.decision IS NULL OR o.decision = 'approved'))
+      GROUP BY c.uri
+      ORDER BY c.decided_at DESC
+      LIMIT ?`,
+  ).all(limit) as Record<string, unknown>[];
+  const flags = db.prepare(`SELECT kind, detail, source FROM flag WHERE uri = ?`);
+  return rows.map((r) => ({
+    album: toAlbum(r),
+    source: r.source as CandidateSource,
+    sourceDetail: (r.source_detail as string | null) ?? null,
+    suggestedAt: r.suggested_at as string,
+    flags: flags.all(r.uri as string) as { kind: string; detail: string | null; source: string }[],
+  }));
 }
 
 /**

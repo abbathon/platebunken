@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { openStore } from "./db.ts";
 import {
   addFlag, approve, counts, crate, ensureProfile, getAlbum,
-  reject, release, reviewQueue, suggest, upsertAlbum, withdraw,
+  reject, release, reopenRejected, reviewQueue, suggest, upsertAlbum, withdraw,
   type AlbumInput,
 } from "./crate.ts";
 
@@ -198,4 +198,73 @@ test("the same album arriving from a second source does not duplicate the crate 
 
   assert.equal(crate(db, KID).length, 1);
   assert.equal(counts(db, KID).pending, 0, "approving settles every pending source for that album");
+});
+
+test("the gate: an album that was rejected cannot be approved past the rejection", () => {
+  // Without this guard the UPDATE matches nothing (it only touches undecided rows) while the
+  // INSERT still queues the album, leaving `candidate` saying rejected and `approved` saying
+  // otherwise — and the album reaching the child. /admin is the caller that produces it: a
+  // stale phone tab, a double tap, a back button.
+  const db = store();
+  const a = album(1);
+  upsertAlbum(db, a);
+  suggest(db, a.uri, "similar", "test");
+  reject(db, a.uri);
+
+  assert.throws(() => approve(db, KID, a.uri), /every suggestion of it was rejected/);
+  assert.equal(counts(db, KID).approved, 0, "nothing may have been queued for the crate");
+  assert.equal(crate(db, KID).length, 0);
+});
+
+test("suggest() never resurrects a rejection, however many times the worker runs", () => {
+  // The curation worker calls suggest() every day. If a repeat suggestion reopened a
+  // rejected album, every record the parent has ever turned down would come back forever.
+  const db = store();
+  const a = album(2);
+  upsertAlbum(db, a);
+  suggest(db, a.uri, "similar", "first pass");
+  reject(db, a.uri);
+
+  suggest(db, a.uri, "similar", "the worker, the next morning");
+  assert.equal(reviewQueue(db).length, 0, "it must stay out of the queue");
+  assert.throws(() => approve(db, KID, a.uri), /every suggestion of it was rejected/);
+});
+
+test("reopenRejected is the undo, and it works even when the source already suggested it", () => {
+  // This is the case that a suggest()-based undo silently failed: suggest is ON CONFLICT DO
+  // NOTHING and there are only four legal sources, so an album already rejected from that
+  // same source never came back. The button reported success and the album stayed gone.
+  const db = store();
+  const a = album(2);
+  upsertAlbum(db, a);
+  suggest(db, a.uri, "request", "the parent asked for it");
+  reject(db, a.uri);
+
+  assert.equal(reopenRejected(db, a.uri), true);
+  assert.equal(reviewQueue(db).length, 1, "back in the queue");
+  approve(db, KID, a.uri);
+  assert.equal(counts(db, KID).approved, 1);
+});
+
+test("reopening something that was not rejected reports that it did nothing", () => {
+  const db = store();
+  const a = album(4);
+  upsertAlbum(db, a);
+  suggest(db, a.uri, "similar", null);
+  assert.equal(reopenRejected(db, a.uri), false, "an open candidacy is not an undo");
+
+  approve(db, KID, a.uri);
+  assert.equal(reopenRejected(db, a.uri), false, "and undo never takes an album back out");
+  assert.equal(counts(db, KID).approved, 1);
+});
+
+test("approving twice is idempotent, not an error", () => {
+  // A double tap on a phone must not be a failure the parent has to interpret.
+  const db = store();
+  const a = album(3);
+  upsertAlbum(db, a);
+  suggest(db, a.uri, "similar", null);
+  approve(db, KID, a.uri);
+  approve(db, KID, a.uri);
+  assert.equal(counts(db, KID).approved, 1);
 });
