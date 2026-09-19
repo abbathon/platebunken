@@ -68,7 +68,9 @@ for (const a of [...albums, ...seedAlbums] as Album[]) {
   try {
     const raw = await client.albumTracks(a.item_id, provider);
     tracks = raw
-      .map((t, i) => ({ n: t.track_number ?? i + 1, title: t.name }))
+      // The track uri is what play_media's `start_item` takes, so starting an album at
+      // track 7 is one command rather than a play followed by a jump.
+      .map((t, i) => ({ n: t.track_number ?? i + 1, title: t.name, uri: t.uri ?? null }))
       .sort((x, y) => x.n - y.n);
   } catch {
     // An album whose tracks won't load is exactly the kind of thing the crate must

@@ -5,6 +5,8 @@ import { ALBUMS as MOCK, type Album as MockAlbum } from "./albums";
 export type Cover = { sm: string; lg: string };
 export type Album = {
   id: string;
+  /** The Music Assistant handle, and the only thing the speaker endpoint is ever sent. */
+  uri: string | null;
   /** In the parent's seed playlist — i.e. actually curated, not just present in the library. */
   seed: boolean;
   artist: string;
@@ -15,7 +17,7 @@ export type Album = {
   /** Only used when `cover` is null — the procedural fallback needs a stable seed. */
   hue: number;
   mark: number;
-  tracks: { n: number; title: string }[];
+  tracks: { n: number; title: string; uri?: string | null }[];
 };
 
 /**
@@ -38,8 +40,9 @@ function seed(id: string): { hue: number; mark: number } {
   return { hue: h % 360, mark: (h >>> 8) % 20 };
 }
 
+// Mock albums carry no uri: they exist in nobody's library and must never reach a speaker.
 const fromMock = (a: MockAlbum): Album => ({
-  id: a.id, seed: false, artist: a.artist, title: a.title, year: a.year, explicit: null,
+  id: a.id, uri: null, seed: false, artist: a.artist, title: a.title, year: a.year, explicit: null,
   cover: null, hue: a.hue, mark: a.mark,
   tracks: a.tracks.map((t) => ({ n: t.n, title: t.title })),
 });
@@ -55,6 +58,7 @@ export async function loadLibrary(): Promise<Library> {
     const data = await res.json();
     const albums: Album[] = data.albums.map((a: any) => ({
       id: a.id,
+      uri: a.uri ?? null,
       seed: !!a.seed,
       artist: a.artist || "—",
       title: a.title,

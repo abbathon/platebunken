@@ -5,7 +5,13 @@ export type PlaybackState = "idle" | "playing" | "paused" | "unknown";
 export interface Player {
   player_id: string;
   name: string;
+  /** The MA provider backing this player: "sonos", "slimproto", "airplay", "chromecast"… */
+  provider: string;
+  /** "player" or "group". Groups are not output targets the parent should be offered. */
+  type: string;
   available: boolean;
+  /** Absent on some providers. `model` is what distinguishes a Play:1 from a laptop. */
+  device_info?: { model?: string | null; manufacturer?: string | null } | null;
   powered: boolean | null;
   playback_state: PlaybackState;
   volume_level: number | null;

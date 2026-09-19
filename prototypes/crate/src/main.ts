@@ -9,6 +9,8 @@ import { coverSvg } from "./cover";
 import { THEMES, applyTheme, frameEl, setEntryDirection, themeFromUrl, themePicker, type Theme } from "./theme";
 import { DEFAULT_SETTINGS, adminView, type Settings } from "./admin";
 import { numeralFace, numeralVars } from "../../../src/theme/fonts.ts";
+import { speaker, speakerConfig, speakerPlayers, deviceInfo,
+  type PlayerOption, type DeviceInfo } from "./speaker";
 
 // ── icons: drawn, one weight, never glyphs or emoji ──────────────
 const ICON = {
@@ -65,6 +67,9 @@ const state = {
   lastFlipAt: 0,    // timestamp of the last page flip, to tell a deliberate flip from a scrub
   settings: { ...DEFAULT_SETTINGS } as Settings,
   admin: { unlocked: false, tab: "sound" },
+  /** Parent-surface data, fetched only when the settings screen opens. null = not loaded. */
+  players: null as PlayerOption[] | null,
+  device: null as DeviceInfo | null,
 };
 
 const PER_PAGE = 9;
@@ -72,6 +77,20 @@ const COLS = 3;
 const VOL_STEPS = 7;
 
 const lib = await loadLibrary();
+
+/**
+ * The speaker, if there is one. `configured: false` (no player, host or token in .env) leaves
+ * the page exactly as it was — a silent prototype — rather than half-wired.
+ *
+ * The starting volume comes from .env, mapped into blocks, so what he sees on the rail before
+ * he has touched anything is what the room will actually do. VOLUME_CEILING is enforced on the
+ * server; the blocks are only ever a fraction of it.
+ */
+const SPEAKER = await speakerConfig();
+
+if (SPEAKER?.configured && SPEAKER.ceiling > 0) {
+  state.volume = Math.max(0, Math.min(VOL_STEPS, Math.round((SPEAKER.start / SPEAKER.ceiling) * VOL_STEPS)));
+}
 
 /**
  * The crate is the CURATED set, not the library. Default to the seed playlist only —
@@ -314,6 +333,18 @@ function openAdmin(): void {
   state.admin = { unlocked: false, tab: state.admin.tab };
   state.view = { name: "admin" };
   render();
+  // Asked for once the screen is open, never at boot: this is the one call that asks Music
+  // Assistant what it has got, and it belongs to the parent's surface, not the child's.
+  loadParentData();
+}
+
+function loadParentData(): void {
+  state.players = null;
+  void Promise.all([speakerPlayers(), deviceInfo()]).then(([players, device]) => {
+    state.players = players;
+    state.device = device;
+    if (state.view.name === "admin") render();
+  });
 }
 
 /** Mark a slot selected and tell its frame which way the hand just moved. */
@@ -326,6 +357,15 @@ function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 const play = (album: Album, track = 1) => {
+  /**
+   * The only two things Music Assistant is ever asked at runtime are "give me this cover" and
+   * "play this uri" (§5.1). This is the second one. An album with no uri is a mock album —
+   * it exists in nobody's library, so it plays silently rather than being sent anywhere.
+   */
+  if (SPEAKER?.configured && album.uri) {
+    const t = album.tracks.find((x) => x.n === track);
+    speaker.play(album.uri, state.volume, VOL_STEPS, Math.max(0, track - 1), t?.uri ?? undefined);
+  }
   // The recent and most-played shelves are built from this, and from nothing else. There is no
   // separate tracking: what he played is what he played.
   state.history = [album.id, ...state.history.filter((id) => id !== album.id)];
@@ -467,15 +507,23 @@ function nowPlaying(album: Album, track: number): HTMLElement {
 
   const tp = root.querySelector(".transport")!;
   const pp = el(`<button class="btn btn--lg btn--play" aria-label="${state.playing ? "Pause" : "Spill"}">${state.playing ? ICON.pause : ICON.play}</button>`);
-  pp.addEventListener("click", () => { state.playing = !state.playing; render(); });
+  pp.addEventListener("click", () => { togglePlay(); });
   const skip = el(`<button class="btn btn--lg" aria-label="Neste spor">${ICON.next}</button>`);
   skip.addEventListener("click", () => skipTrack(album, track));
   tp.append(pp, skip);
   return root;
 }
 
+/** Play/pause, everywhere. The page's own state stays authoritative for what is drawn. */
+function togglePlay(): void {
+  state.playing = !state.playing;
+  if (SPEAKER?.configured) speaker.playPause();
+  render();
+}
+
 /** Skip forward. Past the last track is not a dead press — it is the end of the record. */
 function skipTrack(album: Album, track: number): void {
+  if (SPEAKER?.configured) speaker.next();
   if (track >= album.tracks.length) { endOfRecord(); return; }
   state.now = { album, track: track + 1 };
   state.focusTrack = track + 1;
@@ -604,7 +652,10 @@ function moveGrid(dx: number, dy: number): void {
  * without a word. Silence there would be indistinguishable from a broken key.
  */
 function setVolume(delta: number): void {
-  state.volume = Math.max(0, Math.min(VOL_STEPS, state.volume + delta));
+  const next = Math.max(0, Math.min(VOL_STEPS, state.volume + delta));
+  if (next === state.volume) { render(); return; }   // at the ceiling: full blocks, no command
+  state.volume = next;
+  if (SPEAKER?.configured) speaker.volume(state.volume, VOL_STEPS);
   render();
 }
 
@@ -660,7 +711,7 @@ function onKey(e: KeyboardEvent): void {
       // Space is play/pause everywhere, the way every media player has worked forever.
       e.preventDefault();
       if (where === "crate") play(shown()[state.cursor]);
-      else { state.playing = !state.playing; render(); }
+      else togglePlay();
       return;
     case "Escape":
     case "Backspace":
@@ -709,6 +760,14 @@ function render() {
       themes: THEMES,
       onUnlock: (ok) => { if (ok) { state.admin.unlocked = true; render(); } },
       onTab: (tab) => { state.admin.tab = tab; render(); },
+      players: state.players,
+      device: state.device,
+      onPickPlayer: (id) => {
+        speaker.setTarget(id);
+        // Reflect it immediately; the next fetch confirms it from the server.
+        state.players = state.players?.map((p) => ({ ...p, current: p.id === id })) ?? null;
+        render();
+      },
       onClose: goHome,
       onChange: (patch) => {
         state.settings = { ...state.settings, ...patch };

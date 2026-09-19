@@ -202,14 +202,22 @@ export class MassClient {
    * Handles the one failure the research says is certain to happen: someone grouped the
    * speaker from the Sonos app, which makes it a passive member that refuses to play.
    * Ungroup first, then play, then retry once. Silent to the child either way.
+   *
+   * `startItem` is a TRACK uri to begin the album from — `play_media`'s own documented
+   * parameter on this server, so starting at track 7 is one command and the queue still
+   * holds the whole record. Without it the album starts at track 1, and the caller must
+   * fall back to `playIndex()`, which costs a second round trip and a moment of track 1.
    */
-  async playAlbum(playerId: string, albumUri: string): Promise<void> {
+  async playAlbum(playerId: string, albumUri: string, startItem?: string): Promise<void> {
     const player = this.#players.get(playerId);
     if (player?.synced_to || player?.active_group) {
       await this.command("players/cmd/ungroup", { player_id: playerId }).catch(() => {});
     }
     const play = () =>
-      this.command("player_queues/play_media", { queue_id: playerId, media: albumUri, option: "replace" });
+      this.command("player_queues/play_media", {
+        queue_id: playerId, media: albumUri, option: "replace",
+        ...(startItem ? { start_item: startItem } : {}),
+      });
     try {
       await play();
     } catch (e) {
@@ -217,6 +225,11 @@ export class MassClient {
       await this.command("players/cmd/ungroup", { player_id: playerId }).catch(() => {});
       await play();
     }
+  }
+
+  /** Jump to a position in the queue that is already loaded. 0-based, as MA counts it. */
+  playIndex(playerId: string, index: number): Promise<unknown> {
+    return this.command("player_queues/play_index", { queue_id: playerId, index });
   }
 
   setVolume(playerId: string, level: number): Promise<unknown> {
