@@ -80,11 +80,31 @@ Copy that file to the host, then load it into the named volume:
 ```
 docker volume create platebunken-crate
 docker run --rm -v platebunken-crate:/data -v /tmp:/in alpine \
-  sh -c 'cp /in/platebunken.sqlite /data/platebunken.sqlite && chown 1000:1000 /data/platebunken.sqlite'
+  sh -c 'cp /in/platebunken.sqlite /data/platebunken.sqlite && chown -R 1000:1000 /data'
 ```
 
-`1000:1000` is the `node` user the container runs as. A file it cannot write is a crate that
-cannot be added to.
+`1000:1000` is the `node` user the container runs as (verified: `id node` in the image).
+
+**`-R`, on the directory — not just the file.** Chowning only the file leaves `/data` owned by
+root, and the container then fails to start with:
+
+```
+Error: attempt to write a readonly database
+    at openStore (file:///app/src/store/db.ts:23)
+```
+
+which names the database and is really about the *directory*. SQLite in WAL mode creates
+`platebunken.sqlite-wal` and `-shm` beside the database, so a process that cannot create files
+in `/data` cannot open the store for writing even when the store file itself is writable. The
+Dockerfile's own `chown -R node:node /data` only applies to a volume that is empty on first
+mount; a volume pre-loaded by another container has whatever ownership that container left.
+
+Verify before going further — it is one command and it is the difference between a working
+crate and a container that restarts forever:
+
+```
+docker run --rm -v platebunken-crate:/data alpine stat -c '%u:%g %a' /data     # 1000:1000 755
+```
 
 ## 4. Start it
 
