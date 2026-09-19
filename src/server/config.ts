@@ -68,6 +68,28 @@ export const config = {
   databasePath: str("DATABASE_PATH", "./data/platebunken.sqlite"),
 
   /**
+   * The seed playlist — the parent's hand-built starting point for the crate (§5).
+   *
+   * Read here rather than in the command that uses it. It used to be read straight out of
+   * `process.env` inside `scripts/db-seed.ts`, which is how it came to be left out of the
+   * deployed `.env` entirely: a key nothing in the server reads looks script-only right up
+   * until the script becomes a command inside the container.
+   */
+  seed: {
+    playlistId: str("SEED_PLAYLIST_ID"),
+    provider: str("SEED_PLAYLIST_PROVIDER", "qobuz"),
+  },
+
+  curate: {
+    /**
+     * Ceiling on how many albums one curation run may add to the queue. Ten seconds a day at
+     * /admin, not ten minutes — the queue is reviewed by a parent on a phone, and a run that
+     * adds two hundred candidates is a run that stops the queue being reviewed at all.
+     */
+    maxSuggestions: int("CURATE_MAX", 24),
+  },
+
+  /**
    * Where the built page lives. A path rather than a bundle: `vite build` writes it and this
    * process serves it, so there is exactly one origin and no CORS story to get wrong.
    */

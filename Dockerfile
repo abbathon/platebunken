@@ -50,14 +50,32 @@ ENV NODE_ENV=production \
 
 # The server's own source, and the built page. No node_modules: see above.
 #
-# Only the directories that actually RUN here. `src/ui` is the page's TypeScript, which Vite
-# has already turned into dist/public in the build stage — shipping it as well would put source
-# in the image that nothing executes, and an image should contain what it runs and nothing more.
+# Only the directories that actually RUN here — an image should contain what it runs and
+# nothing more. `src/ui` is the page's TypeScript, which Vite has already turned into
+# dist/public in the build stage, and `src/theme` is compiled into that same bundle.
+#
+# `src/curate` and `src/cli.ts` are here because of what "runs" turned out to mean. They were
+# left out on the reading that curation was a developer's task run from a checkout — and that
+# was the bug: `scripts/` never shipped, so once the container WAS the deployment there was no
+# reachable way to refill the review queue, and `npm run curate` on a laptop wrote to a stale
+# copy of the store that is no longer the product. Curation is now scheduled in-process
+# (src/server/curation.ts) and reachable as `pb curate`, so it runs here and belongs here.
 COPY package.json ./
 COPY src/ma ./src/ma
 COPY src/store ./src/store
 COPY src/server ./src/server
+COPY src/curate ./src/curate
+COPY src/cli.ts ./src/cli.ts
 COPY --from=build /app/dist/public ./dist/public
+
+# `pb` on PATH, so the documented command is the command an operator types:
+#
+#   docker compose exec platebunken pb curate --write
+#
+# A shim rather than a bin entry in package.json, because there is no npm install step in this
+# stage and there are no node_modules for npm to link into.
+RUN printf '#!/bin/sh\nexec node /app/src/cli.ts "$@"\n' > /usr/local/bin/pb \
+ && chmod +x /usr/local/bin/pb
 
 # The store's directory, owned by the unprivileged user the process runs as. A named volume
 # mounted here on first creation inherits this ownership, which is what stops the container
