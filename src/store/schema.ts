@@ -153,4 +153,38 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX play_recent ON play(profile_id, played_at DESC);
   CREATE INDEX play_album  ON play(profile_id, uri);
   `,
+
+  /* v3 ─────────────────────────────────────────────────────────────────── */ `
+  -- WHICH track he chose, not just which album.
+  --
+  -- Null for rows written before this column existed, and null is not zero: an unknown track
+  -- must not be counted as track 1 and quietly invent a favourite nobody played.
+  --
+  -- This counts DELIBERATE choices only. Nothing here knows that track 2 started when track 1
+  -- ended, because the server does not follow the queue yet. That turns out to be the better
+  -- signal for a favourite: a track that played because it came next is not a track he loves,
+  -- and a four-year-old who walks back to the screen to press 7 again is telling you something
+  -- that autoplay never could. When the queue subscription lands, auto-advanced plays should
+  -- be recorded DISTINCTLY rather than folded in here.
+  ALTER TABLE play ADD COLUMN track_n INTEGER;
+
+  -- Settings that outlive a reboot.
+  --
+  -- Until now every setting lived in page memory, so a kiosk that reboots nightly forgot the
+  -- theme, the language and the numeral face every morning — and the speaker the parent chose
+  -- reverted on every redeploy, which with a container is often.
+  --
+  -- Deliberately NOT here: VOLUME_CEILING. It is a hearing-safety limit set from an SPL
+  -- measurement at the pillow (PRODUCT.md), so it belongs to the deployment and not to a
+  -- screen behind a four-digit gate that stops a four-year-old and nobody else. It stays in
+  -- the environment and the settings screen shows it read-only.
+  --
+  -- Values are JSON so a setting can be a number, a flag or an object without a second table
+  -- and without every reader guessing at a string.
+  CREATE TABLE setting (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+  `,
 ];

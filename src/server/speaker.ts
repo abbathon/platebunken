@@ -22,14 +22,23 @@ let connecting: Promise<MassClient> | null = null;
 /**
  * The output player, overridable at runtime from the parent's settings screen.
  *
- * Process memory, deliberately: this is not a child-facing setting and it is not the page's
- * to own. §4.6 puts settings in the store or in `.env`; a target chosen here survives until
- * the container restarts, at which point `PLAYER_ID_PRIMARY` is the answer again. Persisting
- * it belongs with the rest of the settings work, not bolted on here.
+ * This used to be process memory, which meant the speaker the parent chose reverted to
+ * `PLAYER_ID_PRIMARY` on every container restart — and with a container that is every
+ * redeploy. It is a stored setting now; `index.ts` restores it at boot and `app.ts` writes it
+ * when it changes. `.env` remains the answer when nothing has ever been chosen.
  */
 let targetOverride: string | null = null;
 
 export const target = (): string => targetOverride ?? config.playerId;
+
+/**
+ * Put back a target chosen in an earlier run. Not validated against MA here: this runs at
+ * boot, MA may not be reachable yet, and a speaker that is merely switched off must not be
+ * silently forgotten. `setTarget` does validate, because there a person is watching.
+ */
+export function restoreTarget(playerId: string | null): void {
+  targetOverride = playerId;
+}
 
 export async function ma(): Promise<MassClient> {
   if (client) return client;

@@ -17,10 +17,15 @@ import { openStore } from "../store/db.ts";
 import { ensureProfile, counts } from "../store/crate.ts";
 import { config, canPlay } from "./config.ts";
 import { createApp } from "./app.ts";
-import { closeMa } from "./speaker.ts";
+import { closeMa, restoreTarget } from "./speaker.ts";
+import { load as loadSettings } from "./settings.ts";
 
 const db = openStore(config.databasePath);
 ensureProfile(db, config.profile.id, config.profile.label);
+
+// The speaker the parent last chose. Without this the output reverted to PLAYER_ID_PRIMARY on
+// every restart, which with a container means every redeploy.
+restoreTarget(loadSettings(db).playerId);
 
 const server = createServer(createApp(db));
 

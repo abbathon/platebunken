@@ -16,6 +16,7 @@ import { body, json, routeOf } from "./http.ts";
 import { staticServer } from "./static.ts";
 import { wireCrate } from "./crate.ts";
 import { recordPlay } from "../store/crate.ts";
+import { save, wireSettings } from "./settings.ts";
 import * as speaker from "./speaker.ts";
 
 /**
@@ -98,7 +99,32 @@ export function createApp(db: DatabaseSync) {
         const payload = await body(req);
         const uri = String(payload.uri ?? "");
         if (!uri) return json(res, 400, { error: "no album uri" });
-        return json(res, 200, { ok: recordPlay(db, profileId, uri) });
+        // The track number is what makes a favourite possible. It is optional on the wire so
+        // that a caller which genuinely does not know one records the album play regardless.
+        const trackN = Number(payload.track);
+        return json(res, 200, {
+          ok: recordPlay(db, profileId, uri, Number.isFinite(trackN) ? trackN : null),
+        });
+      }
+
+      /* ── settings ─────────────────────────────────────────────────────── */
+      if (route === "/api/settings" && method === "GET") {
+        return json(res, 200, wireSettings(db));
+      }
+
+      if (route === "/api/settings" && method === "PUT") {
+        const patch = await body(req);
+        // The speaker is a setting like any other, but it also has to take effect NOW rather
+        // than at the next boot, so the write and the live switch happen together.
+        if (typeof patch.playerId === "string" && patch.playerId) {
+          if (!(await speaker.setTarget(patch.playerId).catch(() => false))) {
+            return json(res, 400, { error: "unknown player" });
+          }
+        }
+        save(db, patch);
+        // Return the whole settled state, not an echo of the patch: the store validates on the
+        // way out, so this is what the page will actually get next time it asks.
+        return json(res, 200, wireSettings(db));
       }
 
       /* ── the speaker ─────────────────────────────────────────────────── */
@@ -164,6 +190,8 @@ export function createApp(db: DatabaseSync) {
             case "/api/speaker/target": {
               const id = String(payload.playerId ?? "");
               if (!(await speaker.setTarget(id))) return json(res, 400, { error: "unknown player" });
+              // Persist it, so the choice survives the next redeploy.
+              save(db, { playerId: id });
               return json(res, 200, { ok: true, id });
             }
           }

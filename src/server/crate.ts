@@ -1,7 +1,7 @@
 /**
  * The crate, as the page receives it.
  *
- * This is the wiring the project waited on. Before it, `prototypes/crate` fetched a snapshot
+ * This is the wiring the project waited on. Before it, `prototypes/crate` (now `src/ui`) fetched a snapshot
  * of the **whole library** and filtered it on a boolean, and `src/store/`'s approval gate —
  * tested, and correct — was never called by anything. Worse, the page's error path fell back
  * to a hardcoded mock set, so a briefly-unreachable store put twenty albums nobody had
@@ -14,7 +14,9 @@
  * cover bytes and for playback, and for nothing else.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { allTracks, counts, crate, mostPlayed, recentlyPlayed, type StoredAlbum } from "../store/crate.ts";
+import {
+  allTracks, counts, crate, favouriteTracks, mostPlayed, recentlyPlayed, type StoredAlbum,
+} from "../store/crate.ts";
 import { coverPath } from "../ma/images.ts";
 
 /**
@@ -27,7 +29,17 @@ const SHELF_SIZE = 9;
 const cover = (proxyId: string | null) =>
   proxyId ? { sm: coverPath(proxyId, 160, 2), lg: coverPath(proxyId, 512, 2) } : null;
 
-export interface WireTrack { n: number; title: string; uri: string | null }
+export interface WireTrack {
+  n: number;
+  title: string;
+  uri: string | null;
+  /**
+   * A track he keeps choosing. Derived from the play log, never declared — there is no "like"
+   * button and there must not be one, because the product does four things and refuses the
+   * fifth. The page draws a mark beside it; the mark never reorders anything.
+   */
+  favourite: boolean;
+}
 
 export interface WireAlbum {
   /** The MA handle. It is the album's identity here and the only thing ever sent to play. */
@@ -78,10 +90,17 @@ const wire = (a: StoredAlbum, tracks: WireTrack[]): WireAlbum => ({
 
 export function wireCrate(db: DatabaseSync, profileId: string): WireCrate {
   const tracksByUri = allTracks(db, profileId);
-  const slots = crate(db, profileId).map((s): WireSlot => ({
-    position: s.position,
-    album: s.album ? wire(s.album, tracksByUri.get(s.album.uri) ?? []) : null,
-  }));
+  const favourites = favouriteTracks(db, profileId);
+
+  const slots = crate(db, profileId).map((s): WireSlot => {
+    if (!s.album) return { position: s.position, album: null };
+    const fav = favourites.get(s.album.uri);
+    const tracks = (tracksByUri.get(s.album.uri) ?? []).map((t) => ({
+      ...t,
+      favourite: fav?.has(t.n) ?? false,
+    }));
+    return { position: s.position, album: wire(s.album, tracks) };
+  });
 
   return {
     slots,

@@ -361,13 +361,116 @@ export function allTracks(db: DatabaseSync, profileId: string): Map<string, Stor
  * outside the crate has no business appearing on a shelf, and a shelf is the only thing this
  * log feeds. The gate holds on the way in *and* on the way back out.
  */
-export function recordPlay(db: DatabaseSync, profileId: string, uri: string): boolean {
+export function recordPlay(
+  db: DatabaseSync,
+  profileId: string,
+  uri: string,
+  trackN?: number | null,
+): boolean {
   const inCrate = db.prepare(
     `SELECT 1 FROM approved WHERE profile_id = ? AND uri = ? AND position IS NOT NULL AND withdrawn_at IS NULL`,
   ).get(profileId, uri);
   if (!inCrate) return false;
-  db.prepare(`INSERT INTO play (profile_id, uri, played_at) VALUES (?, ?, ?)`).run(profileId, uri, now());
+  // A track number that is not a positive integer is stored as unknown rather than coerced.
+  // Null is not zero here: an invented track 1 would invent a favourite nobody played.
+  const n = Number.isInteger(trackN) && (trackN as number) > 0 ? (trackN as number) : null;
+  db.prepare(`INSERT INTO play (profile_id, uri, played_at, track_n) VALUES (?, ?, ?, ?)`)
+    .run(profileId, uri, now(), n);
   return true;
+}
+
+/**
+ * How many deliberate plays a track needs before it is marked at all.
+ *
+ * Three, because one is an accident and two is a coincidence. An album played straight through
+ * once gives every track a single play, and marking all of them would say nothing — a mark
+ * that is always on is a mark he stops seeing.
+ */
+export const FAVOURITE_MIN_PLAYS = 3;
+
+/**
+ * And how far behind the album's best-loved track a track may fall and still be marked.
+ *
+ * Half. The question a mark answers is "which ones do you keep coming back to", and on an
+ * album where he plays track 7 ten times and everything else twice, only 7 is an honest
+ * answer. Two tracks at 8 and 10 are both honest answers.
+ */
+export const FAVOURITE_SHARE_OF_TOP = 0.5;
+
+/**
+ * The tracks he keeps choosing, per album.
+ *
+ * Derived from behaviour and never declared. The product does four things and refuses the
+ * fifth — there is no "like" button, there must not be one, and a mark he could chase would
+ * turn listening into a game with a score. This is only ever a description of what he already
+ * did, which is why it is safe to show him.
+ *
+ * Returns album uri -> the set of track numbers to mark. An album with no qualifying track is
+ * absent rather than present-and-empty, so callers cannot accidentally render an empty mark.
+ */
+export function favouriteTracks(db: DatabaseSync, profileId: string): Map<string, Set<number>> {
+  const rows = db.prepare(
+    `SELECT uri, track_n, COUNT(*) AS plays
+       FROM play
+      WHERE profile_id = ? AND track_n IS NOT NULL
+      GROUP BY uri, track_n`,
+  ).all(profileId) as Record<string, unknown>[];
+
+  const byAlbum = new Map<string, { n: number; plays: number }[]>();
+  for (const r of rows) {
+    const uri = r.uri as string;
+    let list = byAlbum.get(uri);
+    if (!list) byAlbum.set(uri, (list = []));
+    list.push({ n: Number(r.track_n), plays: Number(r.plays) });
+  }
+
+  const out = new Map<string, Set<number>>();
+  for (const [uri, tracks] of byAlbum) {
+    const top = Math.max(...tracks.map((t) => t.plays));
+    const marked = tracks
+      .filter((t) => t.plays >= FAVOURITE_MIN_PLAYS && t.plays >= top * FAVOURITE_SHARE_OF_TOP)
+      .map((t) => t.n);
+    if (marked.length) out.set(uri, new Set(marked));
+  }
+  return out;
+}
+
+/* ── settings that outlive a reboot ────────────────────────────────────── */
+
+/**
+ * Read every stored setting. Values are JSON; a row that will not parse is skipped rather
+ * than thrown, because one corrupt setting must not stop the crate from rendering.
+ */
+export function settings(db: DatabaseSync): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const r of db.prepare(`SELECT key, value FROM setting`).all() as Record<string, unknown>[]) {
+    try {
+      out[r.key as string] = JSON.parse(r.value as string);
+    } catch {
+      console.warn(`[store] setting ${r.key} is not valid JSON; ignoring it`);
+    }
+  }
+  return out;
+}
+
+/** Write settings. Only the keys passed are touched; anything else keeps its value. */
+export function setSettings(db: DatabaseSync, patch: Record<string, unknown>): void {
+  const stmt = db.prepare(
+    `INSERT INTO setting (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  );
+  const t = now();
+  db.exec("BEGIN");
+  try {
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) continue;
+      stmt.run(k, JSON.stringify(v), t);
+    }
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
 }
 
 /**
