@@ -16,9 +16,11 @@ import { createServer } from "node:http";
 import { openStore } from "../store/db.ts";
 import { ensureProfile, counts } from "../store/crate.ts";
 import { CHECK_INTERVAL_MS, runTrickle } from "./trickle.ts";
+import { CURATE_HOUR, runCuration } from "./curation.ts";
+import { enabledSources } from "../curate/worker.ts";
 import { config, canPlay } from "./config.ts";
 import { createApp } from "./app.ts";
-import { closeMa, restoreTarget } from "./speaker.ts";
+import { closeMa, ma, restoreTarget } from "./speaker.ts";
 import { load as loadSettings } from "./settings.ts";
 
 const db = openStore(config.databasePath);
@@ -45,10 +47,21 @@ function announce(): void {
   console.log(`  page     ${config.publicDir}`);
   console.log(`  crate    ${c.inCrate} albums, ${c.waitingToRelease} waiting to release, ${c.pending} in the review queue`);
   if (c.inCrate === 0) {
-    console.warn(`  ! the crate is EMPTY. Nothing has been approved and released yet — run db:seed.`);
+    console.warn(`  ! the crate is EMPTY. Nothing has been approved and released yet — run \`pb seed --write\`.`);
   }
   if (c.invisible > 0) {
     console.warn(`  ! ${c.invisible} approved albums have no artwork; in a cover-art interface those are invisible albums.`);
+  }
+  /**
+   * The curation schedule, said at boot for the same reason as everything else here: the
+   * previous version of this was a command on a developer's laptop, and the way that failed
+   * was an empty review queue weeks later with nothing anywhere saying why.
+   */
+  const on = Object.entries(enabledSources(loadSettings(db).sources)).filter(([, v]) => v).map(([k]) => k);
+  if (on.length) {
+    console.log(`  curate   daily after ${String(CURATE_HOUR).padStart(2, "0")}:00 local, from ${on.join(" + ")}`);
+  } else {
+    console.warn(`  ! every suggestion source is off in Settings → Kilder; the review queue will not refill.`);
   }
   if (canPlay()) {
     console.log(`  speaker  ${config.playerId} via ${config.ma.baseUrl}, ceiling ${config.volume.ceiling}/100`);
@@ -84,10 +97,34 @@ function trickle(): void {
   }
 }
 
+/**
+ * Keeping the review queue full (§5, `curation.ts`).
+ *
+ * Shares the trickle's half-hourly wake-up rather than adding a second timer: both are one
+ * indexed read that almost always decides to do nothing, and one interval is one thing to
+ * reason about when a scheduled job does not fire.
+ *
+ * Deliberately not awaited. A curation run takes minutes of paced outbound requests, and
+ * nothing — not the page, not the trickle, not shutdown — may wait on it. `runCuration` never
+ * throws, so there is no rejection to lose.
+ */
+function curation(): void {
+  // Curation needs the catalogue, not a speaker: it asks MA for albums and never plays one.
+  // `canPlay()` is the wrong test here — a deployment with no PLAYER_ID_PRIMARY runs silent
+  // on purpose (§10) and should still keep the parent's review queue full.
+  if (!config.ma.host || !config.ma.token) return;
+  void runCuration(db, ma, {
+    profileId: config.profile.id,
+    sources: loadSettings(db).sources,
+    maxSuggestions: config.curate.maxSuggestions,
+  });
+}
+
 server.listen(config.port, config.host, () => {
   announce();
   trickle();
-  setInterval(trickle, CHECK_INTERVAL_MS).unref();
+  curation();
+  setInterval(() => { trickle(); curation(); }, CHECK_INTERVAL_MS).unref();
 });
 
 /**
