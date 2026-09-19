@@ -17,6 +17,7 @@ import { foldName, sameArtist, similarArtists, LABS_ALGORITHM } from "./sources.
 import { themeTokens, hasTheme, parseRosterRow, indexRoster, themeHitsFor, THEME_TERMS } from "./themes.ts";
 import { usableAlbums, interleaveBySeed, enabledSources } from "./worker.ts";
 import { SOURCE_AVAILABLE } from "../server/settings.ts";
+import { deezerArtistId, deezerRelated } from "./deezer.ts";
 import type { Album } from "../ma/types.ts";
 
 /* ── name folding ──────────────────────────────────────────────────── */
@@ -229,17 +230,102 @@ test("an absent sources setting does not silently disable curation", () => {
   // The parent turning a source off is a decision. A missing key is not, and must not read
   // as one — that would be a worker that quietly stops suggesting anything, forever, with no
   // error and nothing in the queue to notice.
-  assert.equal(enabledSources(undefined).listenbrainz, true);
-  assert.equal(enabledSources({}).listenbrainz, true);
-  assert.equal(enabledSources({ listenbrainz: true }).listenbrainz, true);
-  assert.equal(enabledSources({ listenbrainz: false }).listenbrainz, false);
+  assert.deepEqual(enabledSources(undefined), { listenbrainz: true, deezer: true });
+  assert.deepEqual(enabledSources({}), { listenbrainz: true, deezer: true });
+  assert.deepEqual(enabledSources({ listenbrainz: false }), { listenbrainz: false, deezer: true });
+  assert.deepEqual(enabledSources({ deezer: false }), { listenbrainz: true, deezer: false });
 });
 
 test("every source the settings screen offers is one the server can act on", () => {
   // The bug this whole change is about: Settings → Kilder shipped four toggles, all stored,
   // none read. A toggle that changes nothing is a lie the parent has no way of catching, so
   // the server publishes what it can actually do and the page renders that.
-  const claimed = Object.entries(SOURCE_AVAILABLE).filter(([, on]) => on).map(([k]) => k);
-  assert.deepEqual(claimed, ["listenbrainz"],
+  const claimed = Object.entries(SOURCE_AVAILABLE).filter(([, on]) => on).map(([k]) => k).sort();
+  assert.deepEqual(claimed, ["deezer", "listenbrainz"],
     "flip a source to available in the same commit that implements it, never before");
+});
+
+/* ── Deezer, and the band with the same name ───────────────────────── */
+
+test("Deezer is only trusted on an exact name match", () => {
+  // The case that made this strict, found on the first live run: asking Deezer for
+  // "Dumdum Boys" returns id 272625, "Dum Dum Boys" — a garage/power-pop act, not the
+  // Norwegian rock band in this crate. Its related artists came back as Alex Chilton and
+  // The Prisoners. Deezer has no MBIDs and no disambiguation, so nothing in the response
+  // says it is the wrong band: it is a 200 with plausible data, and every album it produced
+  // would have been by strangers.
+  const body = {
+    data: [
+      { id: 272625, name: "Dum Dum Boys" },
+      { id: 999, name: "Dumdum Boys Tribute" },
+    ],
+  };
+  const impl = (async () => ({ ok: true, status: 200, json: async () => body })) as unknown as typeof fetch;
+  return deezerArtistId("Dumdum Boys", impl).then((out) => {
+    assert.equal(out, null, "a near miss is a miss");
+  });
+});
+
+test("an exact match, once folded, is accepted", () => {
+  // Folding still does its job: diacritics and punctuation are not disagreements.
+  const body = { data: [{ id: 8007, name: "Finntröll" }] };
+  const impl = (async () => ({ ok: true, status: 200, json: async () => body })) as unknown as typeof fetch;
+  return deezerArtistId("Finntroll", impl).then((out) => {
+    assert.equal(out?.id, 8007);
+  });
+});
+
+test("Deezer's error-in-a-200 is treated as a failure", () => {
+  // Deezer reports errors as HTTP 200 with an `error` object. Reading that as an empty result
+  // would silently drop the source on every call.
+  const impl = (async () => ({
+    ok: true, status: 200, json: async () => ({ error: { type: "Exception", message: "quota" } }),
+  })) as unknown as typeof fetch;
+  return deezerRelated("Anyone", impl).then(
+    () => assert.fail("should have thrown"),
+    (e) => assert.match((e as Error).message, /Deezer/),
+  );
+});
+
+test("a fan count is never compared against a ListenBrainz score", () => {
+  // Deezer's score is nb_fan; Labs' is a session-similarity figure. Merging and sorting the
+  // two would let whichever number is bigger own the list — the same mistake that once filled
+  // the queue with Queen and The Beatles, one level down. They are interleaved instead.
+  const labs = [{ mbid: "m1", name: "Labs best", score: 2657 }];
+  const deezer = [{ mbid: "", name: "Deezer best", score: 398098 }];
+
+  assert.deepEqual(
+    interleaveBySeed(new Map([["labs", labs], ["deezer", deezer]]), 4).map((n) => n.name),
+    ["Labs best", "Deezer best"],
+    "one each, in source order, with no cross-source comparison",
+  );
+});
+
+test("among exact name matches, the canonical artist wins", () => {
+  // Deezer's catalogue carries duplicate entries with identical names and does not rank the
+  // real one first. Searching "Queen" returns five exact matches; the first has seven
+  // followers, two albums and ZERO related artists, while the canonical Queen (id 412) has
+  // 12.8 million. Taking the first meant Queen, Dio and Michael Jackson silently contributed
+  // nothing, reported as "no Deezer match" — true, and completely misleading.
+  const body = {
+    data: [
+      { id: 135041032, name: "Queen(Ares)", nb_fan: 173 },
+      { id: 268175642, name: "Queen", nb_fan: 7 },
+      { id: 183179807, name: "Queen", nb_fan: 146 },
+      { id: 412, name: "Queen", nb_fan: 12807459 },
+    ],
+  };
+  const impl = (async () => ({ ok: true, status: 200, json: async () => body })) as unknown as typeof fetch;
+  return deezerArtistId("Queen", impl).then((out) => {
+    assert.equal(out?.id, 412, "the real one, not the first one");
+    assert.equal(out?.fans, 12807459);
+  });
+});
+
+test("popularity never overrides the name rule", () => {
+  // The fan count only breaks ties between EXACT matches. A huge artist with a different name
+  // must still lose to no match at all, or the Dum Dum Boys problem comes straight back.
+  const body = { data: [{ id: 1, name: "Dum Dum Boys", nb_fan: 9_000_000 }] };
+  const impl = (async () => ({ ok: true, status: 200, json: async () => body })) as unknown as typeof fetch;
+  return deezerArtistId("Dumdum Boys", impl).then((out) => assert.equal(out, null));
 });

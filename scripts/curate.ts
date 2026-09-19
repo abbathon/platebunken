@@ -53,11 +53,13 @@ if (report.disabled.length) {
 console.log(`crate artists        ${report.crateArtists}`);
 console.log(`  resolved to MBID   ${report.resolved}`);
 if (report.unresolved.length) console.log(`  not on MusicBrainz  ${report.unresolved.join(", ")}`);
+if (report.noDeezerMatch.length) console.log(`  no exact Deezer match  ${report.noDeezerMatch.join(", ")}`);
 console.log(`neighbours found     ${report.neighbours}  (${report.alreadyHave} already in the crate)`);
 console.log(`artists searched     ${report.searched}`);
 console.log(`  wrong artist       ${report.skippedWrongArtist}  (fuzzy search, filtered out)`);
 console.log(`  no artwork         ${report.skippedNoArtwork}`);
 console.log(`  already known      ${report.skippedKnown}`);
+console.log(`  duplicate release  ${report.skippedDuplicate}`);
 console.log("");
 
 if (!report.candidates.length) {

@@ -38,6 +38,7 @@ import {
 } from "../store/crate.ts";
 import { foldName, resolveArtistMbid, sameArtist, similarArtists, type Fetcher, type Neighbour } from "./sources.ts";
 import { fetchThemeRoster, indexRoster, themeHitsFor, THEME_TERMS, type ThemeBand } from "./themes.ts";
+import { deezerRelated } from "./deezer.ts";
 
 /** Roster freshness. Research 03 says monthly; the rosters move slowly and the crawl is slow. */
 export const ROSTER_MAX_AGE_DAYS = 30;
@@ -59,7 +60,7 @@ export interface CurateOptions {
    * toggle that quietly turns off the thing flagging National Socialism in a four-year-old's
    * review queue is not a setting this product offers. §5.
    */
-  sources?: { listenbrainz?: boolean };
+  sources?: { listenbrainz?: boolean; deezer?: boolean };
   /** How many neighbours of each crate artist to consider. */
   neighboursPerArtist?: number;
   /** How many albums to take from each neighbour. */
@@ -75,6 +76,11 @@ export interface CurateOptions {
 export interface CurateReport {
   /** Sources that were switched off, so a run that suggests nothing says why. */
   disabled: string[];
+  /**
+   * Crate artists Deezer had no exact name match for. Reported rather than hidden: the match
+   * is deliberately strict (see deezer.ts), and it is useful to know who it is losing.
+   */
+  noDeezerMatch: string[];
   crateArtists: number;
   resolved: number;
   unresolved: string[];
@@ -86,6 +92,8 @@ export interface CurateReport {
   skippedNoArtwork: number;
   skippedKnown: number;
   skippedWrongArtist: number;
+  /** Re-releases of something already queued this run: remasters, deluxe editions. */
+  skippedDuplicate: number;
 }
 
 /**
@@ -95,8 +103,10 @@ export interface CurateReport {
  * an absent setting as "off" would be a worker that quietly stops suggesting anything, with
  * no error and an empty queue as the only symptom.
  */
-export function enabledSources(sources: { listenbrainz?: boolean } | undefined): { listenbrainz: boolean } {
-  return { listenbrainz: sources?.listenbrainz !== false };
+export function enabledSources(
+  sources: { listenbrainz?: boolean; deezer?: boolean } | undefined,
+): { listenbrainz: boolean; deezer: boolean } {
+  return { listenbrainz: sources?.listenbrainz !== false, deezer: sources?.deezer !== false };
 }
 
 /**
@@ -199,22 +209,40 @@ export async function curate(
   const fetchImpl = opts.fetchImpl ?? fetch;
   const log = opts.onLog ?? ((m: string) => console.log(m));
 
-  const useListenBrainz = enabledSources(opts.sources).listenbrainz;
+  const on = enabledSources(opts.sources);
+  const useListenBrainz = on.listenbrainz;
+  const useDeezer = on.deezer;
 
   const report: CurateReport = {
-    disabled: useListenBrainz ? [] : ["listenbrainz"],
+    disabled: [
+      ...(useListenBrainz ? [] : ["listenbrainz"]),
+      ...(useDeezer ? [] : ["deezer"]),
+    ],
+    noDeezerMatch: [],
     crateArtists: 0, resolved: 0, unresolved: [], neighbours: 0, alreadyHave: 0,
     searched: 0, candidates: [], skippedNoArtwork: 0, skippedKnown: 0, skippedWrongArtist: 0,
+    skippedDuplicate: 0,
   };
 
-  if (!useListenBrainz) {
-    // Every suggestion in this worker comes from Labs today. With it off there is nothing to
-    // do, and saying so is better than an empty run that looks like a failure.
-    log("[curate] ListenBrainz is switched off in Settings → Kilder; there is no other source built yet.");
+  if (!useListenBrainz && !useDeezer) {
+    // Saying so is better than an empty run that looks like a failure.
+    log("[curate] every suggestion source is switched off in Settings → Kilder. Nothing to do.");
     return report;
   }
 
   const themeIndex = await rosters(db, { write, fetchImpl, log });
+
+  /**
+   * Releases already queued this run, by folded artist + title.
+   *
+   * Catalogues carry the same record several times — a remaster, a deluxe edition, a
+   * territory variant — under the same name and different uris. A first run offered
+   * "Van Halen — Van Halen" and "Ramones — Ramones" twice each, and "Slash — Slash" beside
+   * "Slash — Slash " with a trailing space. Each of those costs the parent a decision on a
+   * record they have already decided about, on a surface whose whole promise is ten seconds
+   * a day.
+   */
+  const seenRelease = new Set<string>();
 
   const seeds = crateArtists(db, opts.profileId);
   report.crateArtists = seeds.length;
@@ -238,41 +266,80 @@ export async function curate(
   /** Folded neighbour name -> best score seen, so one artist is not queued twice. */
   const bestScore = new Map<string, number>();
   for (const artist of seeds) {
-    let mbid = cacheGet<string | null>(db, "artist_mbid", artist)?.value ?? null;
-    if (cacheStale(db, "artist_mbid", artist, MBID_MAX_AGE_DAYS)) {
-      try {
-        mbid = (await resolveArtistMbid(artist, fetchImpl))?.mbid ?? null;
-        if (write) cachePut(db, "artist_mbid", artist, mbid);
-      } catch (e) {
-        log(`[curate] ! MusicBrainz lookup failed for ${artist}: ${(e as Error).message}`);
-        continue;
+    /* ── ListenBrainz Labs, via MusicBrainz identity ── */
+    let labs: Neighbour[] = [];
+    if (useListenBrainz) {
+      let mbid = cacheGet<string | null>(db, "artist_mbid", artist)?.value ?? null;
+      if (cacheStale(db, "artist_mbid", artist, MBID_MAX_AGE_DAYS)) {
+        try {
+          mbid = (await resolveArtistMbid(artist, fetchImpl))?.mbid ?? null;
+          if (write) cachePut(db, "artist_mbid", artist, mbid);
+        } catch (e) {
+          log(`[curate] ! MusicBrainz lookup failed for ${artist}: ${(e as Error).message}`);
+          mbid = null;
+        }
+      }
+      if (mbid) {
+        report.resolved++;
+        labs = cacheGet<Neighbour[]>(db, "similar", mbid)?.value ?? [];
+        if (!labs.length || cacheStale(db, "similar", mbid, SIMILAR_MAX_AGE_DAYS)) {
+          try {
+            labs = await similarArtists(mbid, fetchImpl);
+            if (write) cachePut(db, "similar", mbid, labs);
+          } catch (e) {
+            log(`[curate] ! neighbours failed for ${artist}: ${(e as Error).message}`);
+            labs = [];
+          }
+        }
+      } else {
+        report.unresolved.push(artist);
       }
     }
-    if (!mbid) { report.unresolved.push(artist); continue; }
-    report.resolved++;
 
-    let neighbours = cacheGet<Neighbour[]>(db, "similar", mbid)?.value;
-    if (!neighbours || cacheStale(db, "similar", mbid, SIMILAR_MAX_AGE_DAYS)) {
-      try {
-        neighbours = await similarArtists(mbid, fetchImpl);
-        if (write) cachePut(db, "similar", mbid, neighbours);
-      } catch (e) {
-        log(`[curate] ! neighbours failed for ${artist}: ${(e as Error).message}`);
-        neighbours = [];
+    /* ── Deezer, by strict name match ── */
+    let deezer: Neighbour[] = [];
+    if (useDeezer) {
+      const key = foldName(artist);
+      deezer = cacheGet<Neighbour[]>(db, "deezer_related", key)?.value ?? [];
+      if (!deezer.length || cacheStale(db, "deezer_related", key, SIMILAR_MAX_AGE_DAYS)) {
+        try {
+          deezer = await deezerRelated(artist, fetchImpl, neighboursPerArtist);
+          if (!deezer.length) report.noDeezerMatch.push(artist);
+          if (write) cachePut(db, "deezer_related", key, deezer);
+        } catch (e) {
+          // Corroborating source. Research 03 §1.7: not a documented-stable contract, and it
+          // has broken without announcement before. Losing it must not lose the run.
+          log(`[curate] ! Deezer failed for ${artist}: ${(e as Error).message}`);
+          deezer = [];
+        }
       }
     }
 
+    /**
+     * Interleave the two sources before ranking within the seed.
+     *
+     * Their scores are NOT comparable — Labs' is a session-similarity figure, Deezer's is a
+     * fan count — so merging and sorting would let whichever number happens to be larger own
+     * the list. That is the same mistake that once filled the queue with Queen and The
+     * Beatles, one level down. Taking Labs' best, then Deezer's best, then Labs' second, and
+     * so on, needs no comparison between them at all.
+     */
     const mine: { n: Neighbour; via: string }[] = [];
-    for (const n of neighbours.slice(0, neighboursPerArtist)) {
+    const merged = interleaveBySeed<Neighbour>(
+      new Map([["labs", labs], ["deezer", deezer]]),
+      neighboursPerArtist * 2,
+    );
+    for (const n of merged) {
       const key = foldName(n.name);
       if (have.has(n.name.toLowerCase())) { report.alreadyHave++; continue; }
-      // Suggested by two crate artists is a stronger signal, but it is still one artist: keep
-      // the stronger sighting and drop the weaker rather than queueing it twice.
-      if ((bestScore.get(key) ?? -1) >= n.score) continue;
+      // The same artist can come from both sources, or from two crate artists. Keep one
+      // sighting; the first is the best-placed one, because `merged` is already in order.
+      if (bestScore.has(key)) continue;
       bestScore.set(key, n.score);
       mine.push({ n, via: artist });
+      if (mine.length >= neighboursPerArtist) break;
     }
-    bySeed.set(artist, mine.sort((a, b) => b.n.score - a.n.score));
+    bySeed.set(artist, mine);
   }
 
   const ranked = interleaveBySeed(bySeed, maxSuggestions * 3);
@@ -303,7 +370,10 @@ export async function curate(
 
     for (const a of usableAlbums(results, n.name, albumsPerArtist)) {
       if (known.has(a.uri)) { report.skippedKnown++; continue; }
+      const releaseKey = `${foldName(a.artists?.[0]?.name ?? n.name)}|${foldName(a.name)}`;
+      if (seenRelease.has(releaseKey)) { report.skippedDuplicate++; continue; }
       if (report.candidates.length >= maxSuggestions) break;
+      seenRelease.add(releaseKey);
 
       const input = fromMassAlbum(a);
       const hits = themeHitsFor(n.name, themeIndex);

@@ -51,7 +51,7 @@ export interface StoredSettings {
 export const SOURCE_AVAILABLE: Readonly<Record<keyof StoredSettings["sources"], boolean>> = {
   listenbrainz: true,
   lastfm: false,
-  deezer: false,
+  deezer: true,
   charts: false,
 };
 
