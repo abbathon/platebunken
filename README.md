@@ -16,14 +16,17 @@ The crate, the now-playing screen and the approved-set store are built; the prot
 ## Shape
 
 ```
-Home Assistant host        Music Assistant (Qobuz + NAS + Sonos)
-                           platebunken-server (SQLite, curation, admin, MQTT)
+Home Assistant host        Music Assistant (Qobuz + NAS + Sonos), MQTT
         │
+Docker host                platebunken-server (SQLite, curation, admin, MQTT)
+        │                  one image; the store is a volume
 old laptop in the bedroom  Chromium kiosk → platebunken-ui
-                           audio out → powered monitors
+                           audio out → powered monitors, or a Sonos on the LAN
 ```
 
-The laptop holds no state. Destroy it, swap in another, lose nothing.
+The laptop holds no state. Destroy it, swap in another, lose nothing. The server ships as a
+Docker image so that installing it is `docker compose up -d` — see ARCHITECTURE.md §3.1 for why,
+and for the one command that would destroy the thing worth keeping.
 
 ## Research
 

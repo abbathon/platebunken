@@ -51,22 +51,28 @@ computer. It does four things and refuses the fifth.
 ┌────────────────────────── HA host ───────────────────────────┐
 │  Music Assistant        library + playback engine            │
 │    ├── Qobuz provider           (quality 6 = CD 44.1/16)     │
-│    ├── Filesystem provider      → NAS                        │
+│    ├── Jellyfin provider        → NAS                        │
 │    ├── Sonos (S2) provider      → KID_ROOM Play:1 + others   │
-│    └── local player provider    → the laptop (see §7)        │
-│                                                              │
-│  platebunken-server     Node/TS, small                       │
-│    ├── SQLite           the crate: approvals, counts, shelves│
+│    └── squeezelite provider     → the laptop (see §7.2)      │
+│  MQTT broker                                                 │
+└──────────────────────────────────────────────────────────────┘
+                     ▲ ws (MA API) + mqtt — dialled out
+┌──────────────── Docker host (the existing VM) ───────────────┐
+│  platebunken-server     one image, one container  (§3.1)     │
+│    ├── static           the built page, served by this proc  │
+│    ├── SQLite           → a volume. The one thing here that  │
+│    │                      has to outlive the container.      │
 │    ├── MA client        WebSocket, persistent                │
 │    ├── curation worker  suggestions → review queue           │
 │    ├── admin API        parent's phone                       │
 │    └── MQTT             HA discovery: controls + state       │
 └──────────────────────────────────────────────────────────────┘
-                              │ ws + http
+                     ▲ http — one port, dialled in
 ┌───────────────────── old laptop, KID_ROOM ───────────────────┐
-│  Debian minimal → greetd → cage → Chromium --kiosk           │
-│    └── platebunken-ui    vanilla TS + Vite, no state         │
-│  Audio out → Klipsch R-14PM (wired)                          │
+│  Debian 13 → XFCE on X11 → Chromium --kiosk         (§8)     │
+│    ├── platebunken-ui    vanilla TS, built, holds no state   │
+│    └── squeezelite       an MA player on the analog jack     │
+│  Audio out → Klipsch R-14PM (wired) │ Sonos Play:1 (LAN)     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -99,6 +105,66 @@ commands — not any GitHub branch. Every command this app calls was confirmed p
 `players.control` only. `auth/token/create` has `required_role: null`, so that user can mint
 its own long-lived token once logged in; no admin account needs to be involved. **The long-lived token expires in 365 days** — the docs claim ten years,
 the code says otherwise. Diarise it.
+
+### 3.1 Where the server runs, and what it ships as
+
+**A Docker image, on the Docker host that already exists. This has now been reversed twice** —
+first the diagram above put `platebunken-server` on the HA host, then a Proxmox LXC was chosen,
+and both are superseded. Neither is a bad answer; the image is a better one, for three reasons.
+
+- **The host already exists.** A dedicated Docker VM is running and is already patched, backed up
+  and remembered. An LXC is one more machine to do all three to, forever, for one small Node
+  process.
+- **An image is the only artifact a stranger can use.** If this ever goes public, the whole
+  install is `docker compose up -d` — the same shape Music Assistant itself ships as
+  (`research/01` §1.1), so the one thing a prospective user already has running is the one thing
+  they need. A Proxmox LXC is a Proxmox-only artifact. And it is not even a real fork: an LXC
+  would have meant building the image anyway and running Docker inside the container, which buys
+  a layer of nothing.
+- **The image is the deployment.** Rebuild from a tag, roll back to a tag. An LXC's state is
+  whatever was last done to it by hand.
+
+**Still not on the laptop.** Unchanged and not up for discussion: *the laptop holds no state.
+Destroy it, swap in another, lose nothing.* The store holds the child's crate **positions**, and
+a kiosk laptop in a bedroom is exactly the machine you reimage without thinking about it.
+
+**The store is a volume, and that is the entire backup story.** Everything else in the container
+is rebuilt from the image and is worth nothing. The SQLite file is worth everything: it is
+append-only and it is what the child has memorised. So `docker compose down -v` is the one
+command that destroys the product — say that in the README rather than assuming nobody will type
+it. The volume is backed up on the Docker host's own schedule; nothing bespoke.
+
+**Bridge networking, not host.** The server dials *out* to MA's WebSocket and to the MQTT broker,
+and is dialled *in* on exactly one port. Nothing in it needs mDNS or SSDP. Music Assistant needs
+`network_mode: host` because Sonos discovery does — **do not copy that here**; it is the obvious
+cargo-cult and it hands a small Node process the whole host's network namespace for no gain.
+
+**No credential is ever in the image.** The MA token and the MQTT password arrive through
+`env_file:` at run time. Never `ENV` in the Dockerfile and never a `COPY` of `.env`: a layer is
+public the moment the image is, and `docker history` reads it back. The image itself must be
+publishable without redacting anything — that is the test.
+
+**Multi-stage, non-root, and it serves its own page.** Build stage runs `vite build` and `tsc`;
+runtime stage is a slim Node base carrying `dist/` and production deps only, running as a
+non-root user, with a `HEALTHCHECK` that asks the app rather than the port. The page is static
+files served by the same process that serves `/api/*`, so the page's origin and its API's origin
+are the same one and there is no CORS story, no second container and no reverse proxy required
+to make development match production.
+
+**The secure-origin trap, and what to do about it.** §9 wants a Workbox service worker with
+`navigator.storage.persist()` so artwork survives a reboot, and §8 keeps the Chromium profile
+non-ephemeral for the same reason: warm covers are what stop a held-down arrow key showing black
+squares. But a page served from another host over plain `http://` **is not a secure origin**, so
+on this deployment there is no service worker and no persistent cover cache at all. Two ways out:
+
+| | What it costs | Verdict |
+|---|---|---|
+| `--unsafely-treat-insecure-origin-as-secure=http://<host>:<port>` in the kiosk's Chromium flags | One Ansible variable. It is a flag on the client, so the server carries nothing | **Take this now.** Legitimate on a single-target kiosk on a LAN you own |
+| TLS in the stack — a reverse proxy with an internal CA, trusted through Chromium policy | A certificate distribution story this LAN does not have, and the kiosk has no WAN so ACME needs DNS-01 | **The public-release answer**, not today's |
+
+Decide this deliberately, because it bites late and quietly: the cache simply never persists, and
+the symptom is intermittent black tiles on a cold boot, months from now, on the one machine
+nobody wants to debug.
 
 ---
 
@@ -660,8 +726,10 @@ a decade. Design passes via the Impeccable skills.
   old laptop dies.
 - WebP or JPEG. **Not AVIF, not JPEG XL.**
 - `loading="lazy" decoding="async"`; `Image.decode()` to pre-warm the next row.
-- Workbox service worker, cache-first for art, `navigator.storage.persist()`. Needs a secure
-  origin — serve from localhost or a local TLS cert.
+- Workbox service worker, cache-first for art, `navigator.storage.persist()`. **Needs a secure
+  origin, and the server is on another host over plain http, so by default there is neither.**
+  §3.1 has the two ways out and which one to take now. Do not leave this to be discovered by a
+  cold boot with black tiles in it.
 - Single-target kiosk, so Chromium-only CSS is fair game: `scroll-snap`, `animation-timeline: view()`.
 
 ---
@@ -713,14 +781,23 @@ Development happens on macOS; the Linux laptop is a deployment target, not a dev
 6. Admin app + review queue.
 7. Curation worker: seed → suggestions → annotations → queue.
 8. MQTT discovery to HA.
-9. Kiosk image, lockdown, UniFi rules.
+9. Kiosk image, lockdown, UniFi rules. **Mostly done** — `ansible/` builds the laptop end to end
+   and has been applied for real; the UniFi rules and the second door (Tailscale, §8) are not.
 10. Klipsch path, volume ceiling, SPL calibration.
 
 Ship 1–3 and put it in his room. Everything after that is improvement; those three are the product.
 
-**Before the kiosk image is final** (step 9), verify touch and fling quality in Chromium on the
-actual Linux laptop. It is the least-documented part of the stack and decides Wayland vs X11.
-It does not block development, but it must not be discovered late.
+**The gate between "done" and "in his room" is the server** — §3's `platebunken-server`, deployed
+as a Docker image per §3.1. Steps 2, 3 and 5 are built and run under `vite dev` against a dev-only
+plugin standing in for it. That plugin is `apply: "serve"`: it does not exist in a build, so there
+is a built page today that calls `/api/speaker/*` and nothing that answers. Items 4, 6, 7 and 8
+all land inside that same process. It is one piece of work and everything else queues behind it.
+
+**Wayland vs X11 is settled: X11.** It was left open here pending a touch-and-fling test on the
+actual laptop; §8 was rewritten the other way round instead, because XFCE on X11 is what was
+built and because §4.3's blanking plan is `xset`, which under cage had no implementation at all.
+Verify touch and fling quality in Chromium on the laptop anyway — it is still the
+least-documented part of the stack — but it no longer decides anything.
 
 ---
 
