@@ -1,7 +1,18 @@
 # platebunken-server, on the Docker host. ARCHITECTURE.md §3.1.
 #
 #   cp .env.example .env && $EDITOR .env
-#   docker compose up -d --build
+#   docker compose pull && docker compose up -d
+#
+# This PULLS a published image; it does not build. §3.1: "the image is the deployment. Rebuild
+# from a tag, roll back to a tag." A host that compiles its own copy cannot roll back to
+# anything, because what it ran was whatever that host happened to build that day.
+#
+#   PLATEBUNKEN_TAG=1.4.0 docker compose up -d     # roll forward, or back, to a release
+#
+# The default tag is `latest`, which follows the newest release tag and never `main`.
+# To build locally instead — on the machine this is developed on — add the build override:
+#
+#   docker compose -f compose.yml -f compose.build.yml up -d --build
 #
 # THE ONE COMMAND THAT DESTROYS THE PRODUCT IS `docker compose down -v`.
 #
@@ -14,8 +25,11 @@
 
 services:
   platebunken:
-    build: .
-    image: platebunken-server:local
+    # Published by .github/workflows/image.yml on every push to main and on every v* tag.
+    # The registry package is private while the repo is; the host needs one `docker login
+    # ghcr.io` with a token scoped read:packages. The image itself holds no credential — §3.1
+    # calls a publishable image the test of that — so the package may be made public instead.
+    image: ghcr.io/abbathon/platebunken:${PLATEBUNKEN_TAG:-latest}
     container_name: platebunken
     restart: unless-stopped
 

@@ -1,0 +1,100 @@
+# Build and publish platebunken-server to GHCR.
+#
+# ARCHITECTURE.md §3.1: "the image IS the deployment. Rebuild from a tag, roll back to a tag."
+# This is what makes that literally true — before it, the Docker host built from source and
+# "the deployment" was whatever that host happened to compile.
+#
+# Two triggers, deliberately:
+#
+#   push to main  ->  :main and :sha-<short>     what is current
+#   tag v1.2.3    ->  :1.2.3, :1.2, :latest      what you can roll back to
+#
+# A tag is the thing to deploy from; :main is for seeing a change on the host without cutting
+# a release. Both are built from the same Dockerfile, so neither is a special case.
+#
+# **No secret is configured for this.** GHCR is authenticated with the GITHUB_TOKEN that
+# Actions mints per run, scoped by `permissions:` below. Nothing here can read .env, and the
+# image deliberately contains no credential — §3.1 calls a publishable image the test of that.
+name: image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  # So a build can be forced without an empty commit.
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ${{ github.repository }}
+
+jobs:
+  # The image build runs `npm run typecheck` itself, but not the tests, and an image that
+  # builds is not the same as one that works. The store's invariants, the volume ceiling and
+  # the approval gate are all defended by tests; publishing past a red one would make the
+  # registry the place broken code goes to be trusted.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The only write this workflow has. It cannot push code and it cannot read secrets.
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # linux/arm64 is built under emulation. It is slower than the amd64 leg and it is worth
+      # it: the Docker host is amd64, and the machine this is developed on is not.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE }}
+          # `latest` follows the newest SEMVER TAG, never main. Pulling :latest on a host must
+          # not silently move it onto an untagged commit.
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          labels: |
+            org.opencontainers.image.title=platebunken-server
+            org.opencontainers.image.description=The crate, the review queue and the speaker path.
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: what was published
+        run: |
+          echo "### Published" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

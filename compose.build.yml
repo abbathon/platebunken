@@ -1,0 +1,12 @@
+# Build the image here instead of pulling it. An override, not a replacement:
+#
+#   docker compose -f compose.yml -f compose.build.yml up -d --build
+#
+# For the machine this is developed on, and for the Docker host on a day when the registry is
+# unreachable and the crate needs to come back up. It is deliberately NOT the normal path:
+# §3.1 wants the deployment to be an artifact that can be rolled back to, and a host that
+# compiles its own copy has nothing to roll back to.
+services:
+  platebunken:
+    build: .
+    image: platebunken-server:local
