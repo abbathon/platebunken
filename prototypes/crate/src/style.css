@@ -538,3 +538,33 @@ html, body {
   outline-offset: -3px;
 }
 .track[data-focus="1"][aria-current="true"] { outline: 3px solid var(--ink); outline-offset: -5px; }
+
+/* ── settings: the speaker picker and the device readout ──────────────────────
+   A parent surface, behind the keypad. These are the only controls in the product
+   drawn below the 76px floor — §4.6's reasoning: the floor exists so the child can hit
+   what he needs, and nothing here is his. */
+.players { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; min-width: 320px; }
+.player {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 10px 14px; border-radius: 10px; cursor: pointer; text-align: left;
+  background: var(--surface, #1a1a1a); color: inherit;
+  border: 2px solid transparent; font: inherit;
+}
+.player:hover { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+/* Strong enough to find at a glance in a list of sixteen. A 14% wash was not: the parent
+   opens this screen precisely because they do not know which speaker is selected. */
+.player[data-on="1"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.player[data-on="1"] .player__name::after {
+  content: "●"; margin-left: 8px; color: var(--accent); font-size: 11px; vertical-align: middle;
+}
+.player[data-on="1"] .player__meta { opacity: .8; }
+.player__name { font-size: 16px; font-weight: 600; }
+.player__meta { font-size: 12px; opacity: .55; }
+
+.device__value { font-variant-numeric: tabular-nums; font-size: 15px; }
+/* Colour is never the only signal — the line below states the match in words. */
+.device__value[data-state="ok"]  { color: var(--ok, #6bbf6b); }
+.device__value[data-state="bad"] { color: var(--warn, #d98b5f); }
