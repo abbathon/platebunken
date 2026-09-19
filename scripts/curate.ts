@@ -68,7 +68,7 @@ if (!report.candidates.length) {
   console.log(`${write ? "suggested" : "WOULD suggest"} ${report.candidates.length} albums:`);
   for (const c of report.candidates) {
     const flags = c.flags.length ? `   ⚑ ${c.flags.join(", ")}` : "";
-    console.log(`   ${c.artist} — ${c.title}${flags}`);
+    console.log(`   [${c.from.padEnd(12)}] ${c.artist} — ${c.title}${flags}`);
   }
 }
 

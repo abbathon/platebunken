@@ -40,6 +40,13 @@ import { foldName, resolveArtistMbid, sameArtist, similarArtists, type Fetcher, 
 import { fetchThemeRoster, indexRoster, themeHitsFor, THEME_TERMS, type ThemeBand } from "./themes.ts";
 import { deezerRelated } from "./deezer.ts";
 
+/**
+ * What the review queue calls each graph.
+ *
+ * The services' own names, because the parent reads these on the card — not the internal keys.
+ */
+export const SOURCE_LABEL = { listenbrainz: "ListenBrainz", deezer: "Deezer" } as const;
+
 /** Roster freshness. Research 03 says monthly; the rosters move slowly and the crawl is slow. */
 export const ROSTER_MAX_AGE_DAYS = 30;
 /** An artist's MBID does not change. Re-checked seasonally only so a null can be retried. */
@@ -88,7 +95,7 @@ export interface CurateReport {
   /** Neighbours skipped because the crate already has them. */
   alreadyHave: number;
   searched: number;
-  candidates: { uri: string; artist: string; title: string; flags: string[] }[];
+  candidates: { uri: string; artist: string; title: string; from: string; flags: string[] }[];
   skippedNoArtwork: number;
   skippedKnown: number;
   skippedWrongArtist: number;
@@ -262,7 +269,7 @@ export async function curate(
    * A score is only comparable against other neighbours of the SAME artist, so the queue is
    * built by taking each crate artist's best, then each one's second best, and so on.
    */
-  const bySeed = new Map<string, { n: Neighbour; via: string }[]>();
+  const bySeed = new Map<string, { n: Neighbour; via: string; from: string }[]>();
   /** Folded neighbour name -> best score seen, so one artist is not queued twice. */
   const bestScore = new Map<string, number>();
   for (const artist of seeds) {
@@ -324,19 +331,26 @@ export async function curate(
      * Beatles, one level down. Taking Labs' best, then Deezer's best, then Labs' second, and
      * so on, needs no comparison between them at all.
      */
-    const mine: { n: Neighbour; via: string }[] = [];
-    const merged = interleaveBySeed<Neighbour>(
-      new Map([["labs", labs], ["deezer", deezer]]),
+    const mine: { n: Neighbour; via: string; from: string }[] = [];
+    // Tagged BEFORE interleaving, so each suggestion carries which graph proposed it all the
+    // way to the queue card. The two disagree far more than they agree — measured on this
+    // crate, 100 artists came from Deezer alone against 41 from Labs alone, on 43 shared —
+    // and without this the parent cannot tell which source is earning its place.
+    const merged = interleaveBySeed<{ n: Neighbour; from: string }>(
+      new Map([
+        ["labs", labs.map((n) => ({ n, from: SOURCE_LABEL.listenbrainz as string }))],
+        ["deezer", deezer.map((n) => ({ n, from: SOURCE_LABEL.deezer as string }))],
+      ]),
       neighboursPerArtist * 2,
     );
-    for (const n of merged) {
+    for (const { n, from } of merged) {
       const key = foldName(n.name);
       if (have.has(n.name.toLowerCase())) { report.alreadyHave++; continue; }
       // The same artist can come from both sources, or from two crate artists. Keep one
       // sighting; the first is the best-placed one, because `merged` is already in order.
       if (bestScore.has(key)) continue;
       bestScore.set(key, n.score);
-      mine.push({ n, via: artist });
+      mine.push({ n, via: artist, from });
       if (mine.length >= neighboursPerArtist) break;
     }
     bySeed.set(artist, mine);
@@ -346,7 +360,7 @@ export async function curate(
   report.neighbours = ranked.length;
 
   // ── neighbours -> albums that can actually be shown ────────────────
-  for (const { n, via } of ranked) {
+  for (const { n, via, from } of ranked) {
     if (report.candidates.length >= maxSuggestions) break;
 
     let results: Album[];
@@ -380,7 +394,10 @@ export async function curate(
 
       if (write) {
         upsertAlbum(db, input);
-        suggest(db, a.uri, "similar", `liker ${via}`);
+        // `candidate.source` is constrained to seed/similar/chart/request by the schema, so
+        // WHICH graph proposed this lives in the detail. Free text, no migration, and the
+        // review queue already renders it verbatim on the card.
+        suggest(db, a.uri, "similar", `${from} · liker ${via}`);
         for (const h of hits) {
           // The detail carries the verbatim themes string and the band's own page, so the
           // parent can check the claim rather than take the flag's word for it.
@@ -394,7 +411,7 @@ export async function curate(
 
       known.add(a.uri);
       report.candidates.push({
-        uri: a.uri, artist: a.artists?.[0]?.name ?? n.name, title: a.name,
+        uri: a.uri, artist: a.artists?.[0]?.name ?? n.name, title: a.name, from,
         flags: hits.map((h) => `nsbm-theme:${h.term}`),
       });
     }
