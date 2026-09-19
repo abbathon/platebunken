@@ -3,7 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prototype": "vite prototypes/crate --open",
+    "dev": "node --env-file=.env scripts/dev.ts",
+    "build": "vite build prototypes/crate",
+    "serve": "node --env-file=.env src/server/index.ts",
+    "start": "node src/server/index.ts",
+    "prototype": "node --env-file=.env scripts/dev.ts",
     "smoke": "node --env-file=.env scripts/smoke.ts",
     "typecheck": "tsc --noEmit",
     "ma:user": "node --env-file=.env scripts/ma-user.ts",

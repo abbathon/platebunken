@@ -1,6 +1,6 @@
 // PROTOTYPE: procedural cover art, so this runs offline and ships nobody else's artwork.
 // Real covers come from Music Assistant's imageproxy at the exact tile size.
-import type { Album } from "./library";
+import type { Album } from "./store";
 
 const ink = (h: number, l: number, s = 70) => `hsl(${h} ${s}% ${l}%)`;
 

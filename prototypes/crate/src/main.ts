@@ -4,9 +4,9 @@
 // was which one a four-year-old could actually drive. It is answered — **A, the wall** — so B
 // and C are gone rather than kept around as options. A prototype that still carries the
 // alternatives after the decision is a prototype nobody trusts the decision of.
-import { loadLibrary, seedCount, type Album } from "./library";
+import { loadCrate, recordPlay, type Album, type Crate } from "./store";
 import { coverSvg } from "./cover";
-import { THEMES, applyTheme, frameEl, setEntryDirection, themeFromUrl, themePicker, type Theme } from "./theme";
+import { THEMES, applyTheme, emblemSvg, frameEl, setEntryDirection, themeFromUrl, themePicker, type Theme } from "./theme";
 import { DEFAULT_SETTINGS, adminView, type Settings } from "./admin";
 import { numeralFace, numeralVars } from "../../../src/theme/fonts.ts";
 import { speaker, speakerConfig, speakerPlayers, deviceInfo,
@@ -33,7 +33,13 @@ const ICON = {
   plus:  `<svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>`,
 };
 
-// ── state. In memory only; a prototype must not depend on persistence. ──
+// ── state. What is on screen; never what is true. ───────────────────
+//
+// This block used to say "in memory only; a prototype must not depend on persistence." That
+// stopped being true when the crate started coming from the store: what he owns, where it
+// sits and what he has played are all persisted now, and none of them are in here. What is
+// left is genuinely screen state — which shelf, which cursor, which page — and losing it on
+// a reload costs him nothing he had memorised.
 //
 // `now` is what is PLAYING. `view` is what is ON SCREEN. They were one thing, which meant the
 // crate had no way to know a record was running and could not mark the sleeve it came from —
@@ -51,10 +57,10 @@ const state = {
    * cost him his place — position is the only index he has.
    */
   cursors: { crate: 0, new: 0, recent: 0, played: 0 } as Record<Shelf, number>,
-  /** Album ids, most recent first. Feeds the recent shelf. */
-  history: [] as string[],
-  /** Album id -> times played. Feeds the most-played shelf. */
-  counts: {} as Record<string, number>,
+
+  // The recent and most-played shelves used to live here, in page memory, and reset on every
+  // reload. They are the store's now: `CRATE.recent` and `CRATE.played`, built from the play
+  // log, so they survive the nightly reboot that used to empty them.
   page: 0,          // A
   cursor: 0,        // B and C, and the focused album in A
   focusTrack: 1,    // focused row in the number line
@@ -76,7 +82,61 @@ const PER_PAGE = 9;
 const COLS = 3;
 const VOL_STEPS = 7;
 
-const lib = await loadLibrary();
+/**
+ * The crate, from the store and from nowhere else.
+ *
+ * `null` means the store could not be reached, and the page renders §10's sleepy state and
+ * keeps trying. There is deliberately no fallback data: the old loader fell back to a mock
+ * set of twenty albums nobody had approved, which on the kiosk would have put them in front
+ * of the child the first time the server hiccuped. An empty screen is a bad moment. The wrong
+ * albums is the one failure this whole product is built to prevent.
+ */
+let CRATE: Crate | null = null;
+
+/**
+ * Consecutive failures. The last known crate is held through the first few, because the
+ * commonest reason this call fails is a deploy: the container restarts, three fetches miss,
+ * and it is back. A screen that blinks to sleep every time the server is redeployed is a
+ * worse screen than one that waits — the covers are already warm and he may not even look up.
+ *
+ * Three misses is about thirty seconds. Past that it is not a restart, and the sleepy state is
+ * the honest answer.
+ */
+let misses = 0;
+
+async function fetchCrate(): Promise<void> {
+  try {
+    CRATE = await loadCrate();
+    misses = 0;
+  } catch (e) {
+    misses++;
+    console.warn(`[crate] ${(e as Error).message} (miss ${misses})`);
+    if (misses >= 3) CRATE = null;
+  }
+}
+
+await fetchCrate();
+
+/**
+ * Keep trying, quietly, forever.
+ *
+ * The kiosk boots before the server is necessarily up, and a child standing in front of a
+ * sleepy screen cannot press reload — there is no reload, and there is no keyboard shortcut
+ * that reaches one. Ten seconds is often enough that a server coming back is a ten-second
+ * wait, and rare enough to be invisible.
+ */
+const asleep = () => !CRATE || CRATE.slots.length === 0;
+
+setInterval(() => {
+  const was = asleep();
+  void fetchCrate().then(() => {
+    // Only redraw on the transition, in either direction. A re-render mid-flip interrupts the
+    // riffle, and a re-render while he is choosing moves the frame under his hand.
+    if (was === asleep()) return;
+    if (!asleep()) warmCovers();
+    render();
+  });
+}, 10_000);
 
 /**
  * The speaker, if there is one. `configured: false` (no player, host or token in .env) leaves
@@ -93,13 +153,14 @@ if (SPEAKER?.configured && SPEAKER.ceiling > 0) {
 }
 
 /**
- * The crate is the CURATED set, not the library. Default to the seed playlist only —
- * a library browsed at random contains covers no one approved, which is exactly what the
- * approval gate exists to prevent. `?all=1` shows everything, for working on the grid.
+ * Everything the crate holds, gaps included.
+ *
+ * `?all=1` is gone with the snapshot it belonged to. There is no "whole library" left to fall
+ * back to — the store holds the approved set and nothing else, so the crate IS the curated set
+ * by construction rather than by a filter that anyone could remove later.
  */
-const showAll = new URLSearchParams(location.search).has("all");
-const curated = lib.albums.filter((a) => a.seed);
-const ALBUMS = showAll || curated.length === 0 ? lib.albums : curated;
+const slots = (): (Album | null)[] => CRATE?.slots ?? [];
+const albums = (): Album[] => slots().filter((a): a is Album => !!a);
 
 /**
  * Warm every sleeve into the browser cache up front, small size first.
@@ -109,7 +170,7 @@ const ALBUMS = showAll || curated.length === 0 ? lib.albums : curated;
  */
 function warmCovers(): void {
   const which = tileSize();
-  for (const a of ALBUMS) {
+  for (const a of albums()) {
     if (!a.cover) continue;
     const img = new Image();
     img.decoding = "async";
@@ -162,27 +223,28 @@ function setTheme(t: Theme): void {
  * just play, what do I play most.
  *
  * `new` is the tail of the crate reversed, which is exact rather than approximate: the crate
- * is append-only, so the last albums added are the newest by construction. On the kiosk this
- * reads `released_at` from the store, and the trickle decides what has arrived.
+ * is append-only, so the last albums added are the newest by construction, and the trickle
+ * decides what has arrived.
+ *
+ * *recent* and *most-played* now come from the store, not from page memory. They used to reset
+ * on every reload, which on a kiosk that reboots nightly meant both were empty every morning —
+ * a rail slot that is permanently inert teaches nothing except that it does not work.
  */
 const SHELF_SIZE = PER_PAGE;
 
-function shelfAlbums(shelf: Shelf): Album[] {
+function shelfAlbums(shelf: Shelf): (Album | null)[] {
   switch (shelf) {
+    // The crate keeps its gaps. A withdrawn slot stays empty forever, which is what holds
+    // every position after it exactly where he memorised it.
     case "crate":
-      return ALBUMS;
+      return slots();
+    // The shelves do not: a gap there names nothing and answers no question.
     case "new":
-      return ALBUMS.slice(-SHELF_SIZE).reverse();
+      return albums().slice(-SHELF_SIZE).reverse();
     case "recent":
-      return state.history.slice(0, SHELF_SIZE)
-        .map((id) => ALBUMS.find((a) => a.id === id))
-        .filter((a): a is Album => !!a);
+      return CRATE?.recent ?? [];
     case "played":
-      return Object.entries(state.counts)
-        .sort((x, y) => y[1] - x[1])
-        .slice(0, SHELF_SIZE)
-        .map(([id]) => ALBUMS.find((a) => a.id === id))
-        .filter((a): a is Album => !!a);
+      return CRATE?.played ?? [];
   }
 }
 
@@ -205,7 +267,7 @@ const SHELVES: { id: Shelf; icon: string; label: string }[] = [
 function shelfRail(): HTMLElement {
   const rail = el(`<nav class="rail rail--right" aria-label="Hyller"></nav>`);
   for (const sh of SHELVES) {
-    const empty = shelfAlbums(sh.id).length === 0;
+    const empty = shelfAlbums(sh.id).every((a) => !a);
     const b = el(`<button class="btn shelf-btn" aria-label="${sh.label}" aria-pressed="${sh.id === state.shelf}">${sh.icon}</button>`);
     if (sh.id === state.shelf) b.dataset.on = "1";
     if (empty) { b.dataset.empty = "1"; b.toggleAttribute("disabled", true); }
@@ -215,8 +277,13 @@ function shelfRail(): HTMLElement {
   return rail;
 }
 
-/** The albums the crate is currently showing. Everything downstream reads this, not ALBUMS. */
-const shown = (): Album[] => shelfAlbums(state.shelf);
+/**
+ * What the crate is currently showing. Everything downstream reads this.
+ *
+ * It may contain nulls — see `shelfAlbums`. Callers must render a null as an empty tile and
+ * must never compact the array.
+ */
+const shown = (): (Album | null)[] => shelfAlbums(state.shelf);
 
 function setShelf(next: Shelf): void {
   if (next === state.shelf) return;
@@ -288,6 +355,24 @@ const coverEl = (a: Album, onPlay: (a: Album) => void, which: "sm" | "lg" = tile
 };
 
 /**
+ * A withdrawn album's slot.
+ *
+ * §5.1: "A withdrawn album leaves its slot empty forever." The parent can take a record back,
+ * but the crate must not flow up into the gap — that would move every position after it, and
+ * spatial position is the only index a pre-reader has. One empty tile is cheap; re-flowing
+ * costs him everything he has memorised.
+ *
+ * So it is drawn as a slot, not skipped: the frame still travels through it, it still takes a
+ * press, and the press does nothing. It reads as a record that is out, which is exactly what
+ * it is — the same thing an empty sleeve in a real crate tells you.
+ */
+const emptySlot = (): HTMLElement => {
+  const slot = el(`<div class="slot slot--empty"><div class="cover cover--empty" aria-hidden="true"></div></div>`);
+  slot.append(frameEl(THEME));
+  return slot;
+};
+
+/**
  * What is selected, in words, along the bottom edge.
  *
  * Deliberately not for the child. He cannot read it and never needs to — the frame tells him
@@ -298,7 +383,7 @@ const coverEl = (a: Album, onPlay: (a: Album) => void, which: "sm" | "lg" = tile
  * It lives in the bottom gutter, which §4.5 keeps clear of critical actions anyway, and it is
  * always rendered even when empty so the line below the crate never changes height.
  */
-function caption(a: Album | undefined): HTMLElement {
+function caption(a: Album | null | undefined): HTMLElement {
   const bar = el(`<p class="caption" aria-hidden="true"></p>`);
   if (!a) return bar;
   bar.append(el(`<span class="caption__artist">${esc(a.artist.toUpperCase())}</span>`));
@@ -356,20 +441,29 @@ function focusSlot(slot: HTMLElement): void {
 function esc(s: string) {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
-const play = (album: Album, track = 1) => {
+const play = (album: Album | null | undefined, track = 1) => {
+  // An empty slot. He pressed Enter on a withdrawn album's gap, which is a real thing to do
+  // and must cost nothing: no sound, no error, no screen change. Silence is an answer.
+  if (!album) return;
   /**
    * The only two things Music Assistant is ever asked at runtime are "give me this cover" and
-   * "play this uri" (§5.1). This is the second one. An album with no uri is a mock album —
-   * it exists in nobody's library, so it plays silently rather than being sent anywhere.
+   * "play this uri" (§5.1). This is the second one.
    */
-  if (SPEAKER?.configured && album.uri) {
+  if (SPEAKER?.configured) {
     const t = album.tracks.find((x) => x.n === track);
     speaker.play(album.uri, state.volume, VOL_STEPS, Math.max(0, track - 1), t?.uri ?? undefined);
   }
-  // The recent and most-played shelves are built from this, and from nothing else. There is no
-  // separate tracking: what he played is what he played.
-  state.history = [album.id, ...state.history.filter((id) => id !== album.id)];
-  state.counts[album.id] = (state.counts[album.id] ?? 0) + 1;
+  /**
+   * The recent and most-played shelves are built from this and from nothing else. There is no
+   * separate tracking: what he played is what he played.
+   *
+   * The optimistic local update keeps the shelves right for this session even if the write
+   * does not land; the store is what makes them right tomorrow morning.
+   */
+  recordPlay(album.uri);
+  if (CRATE) {
+    CRATE.recent = [album, ...CRATE.recent.filter((a) => a.uri !== album.uri)].slice(0, SHELF_SIZE);
+  }
   state.now = { album, track };
   state.focusTrack = track;
   state.playing = true;
@@ -397,11 +491,33 @@ function endOfRecord(): void {
   state.now = null;
   state.playing = false;
   if (done) {
-    const i = shown().findIndex((a) => a.id === done.id);
+    const i = shown().findIndex((a) => a?.id === done.id);
     if (i >= 0) { state.cursor = i; state.from = { x: 0, y: 0 }; }
   }
   state.view = { name: "crate" };
   render();
+}
+
+/**
+ * §10, and principle 4: **the child never sees an error.**
+ *
+ * The store is unreachable — the server is restarting, the network is out, the container is
+ * being deployed. He is four, standing in front of a screen, and every honest thing this
+ * screen could tell him is a thing he cannot read and could not act on.
+ *
+ * So it sleeps. The theme's own emblem, dim, breathing slowly; no text, no code, no spinner
+ * (a spinner is a promise, and this makes none). The rails stay where they always are because
+ * they are on every screen forever and a rail that vanishes is a rail he has to relearn. The
+ * page retries in the background and the crate simply appears when it can.
+ *
+ * What it must never do is show him something else. The loader this replaced fell back to a
+ * mock set of twenty albums nobody had approved — on the kiosk, one server hiccup and they
+ * were in front of him.
+ */
+function sleeping(): HTMLElement {
+  return el(`<section class="stage sleeping" aria-hidden="true">
+    <div class="sleeping__emblem">${emblemSvg(THEME)}</div>
+  </section>`);
 }
 
 // ── A · Vegg — 9 covers, tap any one. Position is the index. ─────
@@ -434,7 +550,7 @@ function wall(): HTMLElement {
   const grid = root.querySelector(".wall__grid") as HTMLElement;
   if (flipped && !scrubbing) grid.dataset.flip = dir > 0 ? "right" : "left";
   list.slice(state.page * per, state.page * per + per).forEach((a, i) => {
-    const cell = coverEl(a, play);
+    const cell = a ? coverEl(a, play) : emptySlot();
     // Column order, counted from the edge the page is coming in from.
     const col = i % COLS;
     cell.style.setProperty("--d", String(dir > 0 ? COLS - 1 - col : col));
@@ -562,12 +678,16 @@ function hopTheme(d: number): void {
   setTheme(THEMES[i]!);
 }
 
+/**
+ * The development readout. It can no longer say "mock data", because there is no mock data —
+ * the only source of albums is the approved set, and when that cannot be reached the screen
+ * says so by being asleep rather than by quietly showing something else.
+ */
 function switcher(): HTMLElement {
-  const src = lib.source !== "live"
-    ? "mock data"
-    : showAll
-      ? `${ALBUMS.length} albums · WHOLE LIBRARY, not curated`
-      : `${ALBUMS.length} curated`;
+  const gaps = slots().length - albums().length;
+  const src = !CRATE
+    ? "store unreachable"
+    : `${albums().length} in the crate${gaps ? ` · ${gaps} withdrawn` : ""}`;
   const bar = el(`<div class="switch"><span>${src}</span>
     <button class="switch__theme" aria-label="Next theme">${THEME.label}</button></div>`);
   bar.children[1].addEventListener("click", () => hopTheme(1));
@@ -779,6 +899,16 @@ function render() {
     }));
   } else if (state.view.name === "playing" && now) {
     app.append(nowPlaying(now.album, now.track));
+  } else if (!CRATE || albums().length === 0) {
+    /**
+     * No crate, no wall. Not an empty grid: an empty grid reads as "your music is gone",
+     * which is the single worst thing this screen can say to him.
+     *
+     * "Unreachable" and "nothing approved yet" are one screen on purpose. They are different
+     * problems for the parent and the same non-event for the child, and the parent finds out
+     * from the server's boot log, which says the crate is empty in as many words.
+     */
+    app.append(sleeping());
   } else {
     app.append(wall());
     // Now playing prints the artist large already; repeating it small underneath it would

@@ -402,7 +402,13 @@ html, body {
 .gate__dot { width: 15px; height: 15px; border-radius: 999px; border: 2px solid var(--edge); }
 .gate__dot[data-on="1"] { background: var(--glow); border-color: transparent; }
 .gate__pad { display: grid; grid-template-columns: repeat(3, 84px); gap: 14px; }
-.gate__key { min-width: 84px; min-height: 84px; font: 700 28px/1 inherit; color: var(--ink); }
+/* NOT the `font` shorthand. `font: 700 28px/1 inherit` is invalid — `inherit` is not a legal
+   family inside the shorthand — so the browser dropped the whole declaration and rendered the
+   digits at the 13px default in Arial. It failed silently and looked like a blank keypad. */
+.gate__key {
+  min-width: 84px; min-height: 84px; color: var(--ink);
+  font-weight: 700; font-size: 28px; line-height: 1;
+}
 
 /* ── home ─────────────────────────────────────────────────────── */
 .home { position: fixed; left: 22px; bottom: 22px; z-index: 40; }
@@ -568,3 +574,56 @@ html, body {
 /* Colour is never the only signal — the line below states the match in words. */
 .device__value[data-state="ok"]  { color: var(--ok, #6bbf6b); }
 .device__value[data-state="bad"] { color: var(--warn, #d98b5f); }
+
+/* ── a withdrawn album's slot ──────────────────────────────────────
+   §5.1: a withdrawn album leaves its slot empty forever, because the crate flowing up into
+   the gap would move every position after it — and position is the only index a pre-reader
+   has. So it is DRAWN, not skipped: the frame still travels through it and a press still
+   lands on it and does nothing.
+
+   It reads as a sleeve that is out: the recess a record came from, with the same lit edge as
+   a real sleeve, so it belongs to the crate rather than looking like a tile that failed to
+   load. No question mark, no dashed outline, nothing that asks him to wonder what went wrong. */
+.cover--empty {
+  position: relative; display: block; width: 100%; aspect-ratio: 1;
+  border-radius: 3px; overflow: hidden; cursor: default;
+  /* Lighter than the page, not darker. The first attempt was a dark recess and on the night
+     theme it vanished into the background entirely — which reads as a hole in the grid, the
+     one thing this tile exists to avoid. A faint lit slot reads as a sleeve that is out. */
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--ink) 7%, transparent),
+                            color-mix(in srgb, var(--ink) 3%, transparent) 60%,
+                            color-mix(in srgb, var(--ink) 6%, transparent));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--ink) 9%, transparent),
+    inset 0 3px 14px rgb(0 0 0 / 0.45);
+}
+/* No lift and no hover: there is nothing under it to pick up. The frame still arrives, which
+   is what tells him the selection is here and simply has nothing in it. */
+.slot--empty { pointer-events: none; }
+.slot--empty[data-focus="1"] { transform: none; }
+
+/* ── the sleepy state ──────────────────────────────────────────────
+   §10 and principle 4: the child never sees an error. The store is unreachable and every
+   honest thing this screen could say is a thing he cannot read. So it sleeps — the theme's
+   own emblem, dim, breathing — and the crate appears when it can. No text, no spinner: a
+   spinner is a promise, and this screen makes none. */
+.sleeping {
+  display: grid; place-items: center; height: 100%;
+}
+.sleeping__emblem {
+  width: min(26vmin, 180px); aspect-ratio: 1;
+  color: var(--ink-dim, currentColor); opacity: 0.22;
+  animation: breathe 5.5s ease-in-out infinite;
+}
+.sleeping__emblem svg { display: block; width: 100%; height: 100%; fill: currentColor; }
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.16; transform: scale(0.97); }
+  50%      { opacity: 0.30; transform: scale(1.00); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* It stops mid-breath at a legible opacity rather than freezing at its dimmest. */
+  .sleeping__emblem { animation: none; opacity: 0.24; }
+}

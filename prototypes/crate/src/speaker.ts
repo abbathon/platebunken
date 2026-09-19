@@ -45,7 +45,14 @@ export interface PlayerOption {
   id: string; name: string; provider: string; model: string | null; current: boolean;
 }
 export interface DeviceInfo {
-  hostname: string; addresses: string[]; expected: string | null; matches: boolean | null; maHost: string;
+  hostname: string;
+  /** The machine looking at this page. On the kiosk, that IS the kiosk. */
+  client: string | null;
+  /** The server's own addresses — a bridge address in a container, and not the comparison. */
+  serverAddresses: string[];
+  expected: string | null;
+  matches: boolean | null;
+  maHost: string;
 }
 
 /** Parent surface only, behind the keypad. The child's crate never asks MA what it has got. */

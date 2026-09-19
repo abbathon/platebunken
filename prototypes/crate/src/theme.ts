@@ -2,7 +2,7 @@
 // which is pure data and outlives this prototype; only the DOM work belongs here.
 import { THEMES, cornerSvg, emblemSvg, motifSvg, themeById, themeVars, type Theme } from "../../../src/theme/themes.ts";
 
-export { THEMES, type Theme };
+export { THEMES, emblemSvg, type Theme };
 
 /** On the kiosk the starting theme comes from config; here it is a query parameter. */
 export const themeFromUrl = (): Theme => themeById(new URLSearchParams(location.search).get("theme"));

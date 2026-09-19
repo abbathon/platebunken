@@ -63,8 +63,8 @@ const STRINGS: Dict = {
   speakerWait:  ["Henter spillere …", "Fetching players …"],
   laptopMissing:["Laptopen dukker ikke opp før squeezelite kjører OG slimproto er slått på i Music Assistant.",
                  "The laptop will not appear until squeezelite is running AND slimproto is enabled in Music Assistant."],
-  devHost:      ["Maskinnavn", "Hostname"],
   devIp:        ["IP-adresse", "IP address"],
+  devServer:    ["Tjener", "Server"],
   devIpHelp:    ["Reservert på ruteren, ikke satt på maskinen — ruteren eier subnettet. Stemmer ikke adressen, tok ikke reservasjonen.",
                  "Reserved on the router, not set on the machine — the router owns the subnet. If the address does not match, the reservation did not take."],
   devIpOk:      ["Stemmer med reservasjonen", "Matches the reservation"],
@@ -113,7 +113,8 @@ export interface PlayerOption {
 /** The machine the interface is being served from. */
 export interface DeviceInfo {
   hostname: string;
-  addresses: string[];
+  client: string | null;
+  serverAddresses: string[];
   expected: string | null;
   matches: boolean | null;
   maHost: string;
@@ -269,13 +270,16 @@ function devicePane(ctx: AdminContext): HTMLElement {
       <div class="set__control"><span class="device__value"${state ? ` data-state="${state}"` : ""}>${esc(value)}</span></div>
     </div>`);
 
-  pane.append(line(t("devHost", lang), d.hostname));
-  const actual = d.addresses.join(", ") || "—";
-  pane.append(line(t("devIp", lang), actual, d.matches === null ? undefined : d.matches ? "ok" : "bad"));
+  // The address that matters is THIS machine's — the one showing the page — not the server's.
+  // The server moved to the Docker host, and its own address is a bridge address that has
+  // nothing to do with the kiosk's reservation. The request came from here, so the server
+  // reads it off the connection.
+  pane.append(line(t("devIp", lang), d.client ?? "—", d.matches === null ? undefined : d.matches ? "ok" : "bad"));
   if (d.expected) {
     pane.append(el(`<p class="set__help">${esc(t("devIpHelp", lang))}</p>`));
     pane.append(el(`<p class="set__help">${esc(d.expected)} — ${esc(d.matches ? t("devIpOk", lang) : t("devIpBad", lang))}</p>`));
   }
+  pane.append(line(t("devServer", lang), `${d.hostname}${d.serverAddresses.length ? ` · ${d.serverAddresses.join(", ")}` : ""}`));
   pane.append(line(t("devMa", lang), d.maHost || "—"));
   return pane;
 }
