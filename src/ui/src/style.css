@@ -186,6 +186,23 @@ html, body {
   height: 100%; display: grid; gap: 22px;
 }
 
+/**
+ * The crate reserves the now-playing panel's column, whether or not anything is playing.
+ *
+ * Conditioning this on playback would move every cover the moment music started — the exact
+ * thing principle 2 forbids, and the one the whole append-only crate exists to protect. So the
+ * column is always there and is sometimes empty.
+ *
+ * 16px gutter + the panel + 18px before the covers. The panel is wide enough for four 76px
+ * targets in a row, because the floor is not negotiable and the transport reads left-to-right
+ * in the same order here as on the album view.
+ */
+:root {
+  --nowbar-w: calc(4 * var(--target));          /* four 76px targets in a row */
+  --nowbar-x: calc(16px + var(--target) + 14px); /* clear of the left rail */
+}
+.stage--crate { padding-left: calc(var(--nowbar-x) + var(--nowbar-w) + 18px); }
+
 /* ── A · Vegg ─────────────────────────────────────────────────── */
 .wall { grid-template-rows: 1fr; position: relative; align-content: center; }
 /* The arrows sit beside the covers, not pinned to the window, so they stay next to the crate
@@ -771,36 +788,52 @@ html, body {
 
 
 /* ── what is playing, on the crate ────────────────────────────────
-   Bottom left, clear of the left rail's 76 px column so it can never sit under the theme discs
-   or the volume blocks. It appears only when something is playing and only on the crate: the
-   album view has the full-size transport, and the same four controls twice on one screen is
-   two things to learn instead of one.
+   Stacked after the reference the parent gave: sleeve on top, transport under it, output device
+   named at the foot. The sleeve is the biggest thing in the panel because it is the part he
+   actually reads — he knows the record by its cover, not by a title he cannot decode.
 
-   The sleeve carries the answer. He cannot read a title, and he already knows the record by its
-   cover — so the cover IS the label, and it is also the way back into that record. */
+   The space it occupies is reserved PERMANENTLY, playing or not (see `.wall` below). A crate
+   that shifted when music started would move every cover he has memorised, and principle 2 says
+   nothing he has memorised ever moves. An empty corner is the price of that, and it is cheap. */
 .nowbar {
   position: fixed; z-index: 45;
-  left: calc(16px + var(--target) + 14px); bottom: 18px;
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 14px 8px 8px;
-  border-radius: 16px;
+  /* To the RIGHT of the left rail, never on top of it: the rail carries volume, which is one
+     of the four verbs. The panel covered it at `left: 16px`. */
+  left: var(--nowbar-x); bottom: 18px;
+  width: var(--nowbar-w);
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 12px 10px 10px;
+  border-radius: 18px;
   background: color-mix(in oklab, var(--bg-raised) 88%, var(--bg));
   border: 1px solid var(--edge);
-  box-shadow: 0 10px 28px -12px rgb(0 0 0 / 0.55);
+  box-shadow: 0 12px 32px -14px rgb(0 0 0 / 0.6);
 }
 .nowbar__art {
-  width: 56px; height: 56px; flex: none;
+  width: 100%; aspect-ratio: 1; flex: none;
   padding: 0; border: 0; background: none; cursor: default;
-  border-radius: 8px; overflow: hidden;
-  /* Its own hit area is below the floor on purpose: it is not a verb. Missing it lands on the
-     bar, which does nothing, and the four controls beside it are all full size. */
+  border-radius: 10px; overflow: hidden;
 }
 .nowbar__art .cover { display: block; width: 100%; height: 100%; }
 .nowbar__art img, .nowbar__art svg { width: 100%; height: 100%; object-fit: cover; display: block; }
-.nowbar__ctl { display: flex; align-items: center; gap: 2px; }
 
-/* The bar is a footnote, so it yields to a narrow screen rather than crowding the covers. */
-@media (max-width: 720px) {
-  .nowbar { left: 50%; transform: translateX(-50%); }
-  .nowbar__art { display: none; }
+.nowbar__ctl { display: flex; align-items: center; justify-content: center; gap: 0; }
+
+/* The output device, for the parent. The child cannot read it and never needs to; it answers
+   "why can I not hear anything" without opening the screen behind the keypad. */
+.nowbar__out {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0; max-width: 100%;
+  font-size: 12px; color: var(--ink-dim);
 }
+.nowbar__outIcon { display: grid; place-items: center; flex: none; }
+.nowbar__outIcon svg { width: 14px; height: 14px; fill: currentColor; opacity: 0.8; }
+.nowbar__outName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Nothing has played yet: the mark, dim, so the panel keeps its shape and its place. */
+.nowbar[data-idle="1"] .nowbar__art { cursor: default; }
+.nowbar__empty {
+  display: grid; place-items: center; width: 100%; height: 100%;
+  background: color-mix(in oklab, var(--bg) 70%, var(--bg-raised));
+  color: var(--ink-dim); opacity: 0.32;
+}
+.nowbar__empty svg { width: 46%; height: 46%; }

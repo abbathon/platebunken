@@ -34,6 +34,8 @@ export interface StoredSettings {
   sources: { listenbrainz: boolean; lastfm: boolean; deezer: boolean; charts: boolean };
   /** The MA player the crate plays to. Null means "whatever .env says". */
   playerId: string | null;
+  /** That player's display name, cached at the moment it was chosen. See `setTarget`. */
+  playerName: string | null;
 }
 
 /**
@@ -64,6 +66,7 @@ export const DEFAULTS: StoredSettings = {
   tricklePerDay: 1,
   sources: { listenbrainz: true, lastfm: true, deezer: true, charts: false },
   playerId: null,
+  playerName: null,
 };
 
 const isMark = (v: unknown): v is FavouriteMark =>
@@ -96,6 +99,7 @@ export function load(db: DatabaseSync): StoredSettings {
       charts: bool(src.charts, false),
     },
     playerId: typeof s.playerId === "string" && s.playerId ? s.playerId : null,
+    playerName: typeof s.playerName === "string" && s.playerName ? s.playerName : null,
   };
 }
 

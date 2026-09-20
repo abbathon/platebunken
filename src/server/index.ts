@@ -23,7 +23,7 @@ import { enabledSources } from "../curate/worker.ts";
 import { config } from "./config.ts";
 import { createApp } from "./app.ts";
 import { canPlay, closeMa, ma, restoreTarget, target } from "./speaker.ts";
-import { load as loadSettings } from "./settings.ts";
+import { load as loadSettings, save as saveSettings } from "./settings.ts";
 
 const db = openStore(config.databasePath);
 ensureProfile(db, config.profile.id, config.profile.label);
@@ -188,9 +188,30 @@ async function checkMaReachable(): Promise<void> {
   }
 }
 
+/**
+ * Fill in the chosen speaker's NAME for a store written before names were kept.
+ *
+ * The crate shows which speaker it is playing to, and it reads that from the store rather than
+ * asking Music Assistant — the child's page is not allowed to ask MA what exists (§4.6). Any
+ * deployment that picked its speaker before this existed has the id and no label, and would
+ * show "no speaker" while happily playing to one. Once, at boot, and never fatal.
+ */
+async function backfillPlayerName(): Promise<void> {
+  const s = loadSettings(db);
+  if (!s.playerId || s.playerName) return;
+  try {
+    const name = (await ma()).player(s.playerId)?.name;
+    if (name) {
+      saveSettings(db, { playerName: name });
+      console.log(`  speaker  named "${name}" for the crate's now-playing panel`);
+    }
+  } catch { /* MA unreachable at boot is normal; the next restart tries again. */ }
+}
+
 server.listen(config.port, config.host, () => {
   announce();
   void checkMaReachable();
+  void backfillPlayerName();
   trickle();
   curation();
   backup();

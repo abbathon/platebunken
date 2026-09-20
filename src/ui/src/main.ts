@@ -29,6 +29,8 @@ const ICON = {
   // needs no asset and the mark takes the theme's colour.
   logo:  `<svg viewBox="0 0 64 64" aria-hidden="true"><g fill="currentColor"><rect x="3" y="50" width="58" height="4.5" rx="1.5"/><rect x="5" y="17" width="3.5" height="33" rx="1"/><rect x="10.5" y="17" width="3.5" height="33" rx="1"/><rect x="16" y="17" width="3.5" height="33" rx="1"/><rect x="21.5" y="17" width="3.5" height="33" rx="1"/><rect x="27" y="17" width="3.5" height="33" rx="1"/><path fill-rule="evenodd" transform="rotate(-6 34 50)" d="M34 23h27v27H34z M47.5 29.9a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2z"/></g></svg>`,
   minus: `<svg viewBox="0 0 24 24"><path d="M5 11h14v2H5z"/></svg>`,
+  // Where the sound comes out. A cabinet with a cone, not a megaphone: the thing in the room.
+  out:   `<svg viewBox="0 0 24 24"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm6 9.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0-6a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2Z"/></svg>`,
   // Shelf marks. Learned by position first and shape second, never by name.
   crate: `<svg viewBox="0 0 24 24"><path d="M3 5h3v14H3zM8 5h3v14H8zM13 5h3v14h-3zM18.2 5.6l2.6.8-3.9 12.6-2.6-.8z"/></svg>`,
   star:  `<svg viewBox="0 0 24 24"><path d="m12 2 2.6 6.3 6.8.5-5.2 4.4 1.6 6.6L12 16.3 6.2 19.8l1.6-6.6L2.6 8.8l6.8-.5z"/></svg>`,
@@ -572,6 +574,7 @@ function sleeping(): HTMLElement {
 
 // ── A · Vegg — 9 covers, tap any one. Position is the index. ─────
 function wall(): HTMLElement {
+  // `.stage--crate` reserves the now-playing column. See the rule for why it is unconditional.
   const list = shown();
   const per = PER_PAGE, pages = Math.max(1, Math.ceil(list.length / per));
   // The page follows the focused album, so arrow keys flip pages without a separate concept.
@@ -594,7 +597,7 @@ function wall(): HTMLElement {
   if (flipped) state.lastFlipAt = at;
   state.lastPage = state.page;
 
-  const root = el(`<section class="stage wall">
+  const root = el(`<section class="stage stage--crate wall">
     <div class="wall__row"><div class="wall__grid"></div></div>
   </section>`);
   const grid = root.querySelector(".wall__grid") as HTMLElement;
@@ -759,35 +762,56 @@ function prevTrack(): void {
  * nine covers, while every control keeps the full 76 px target the crate is built on — half of
  * all taps miss at this age, and a miss here must land on another button rather than on nothing.
  */
-function nowBar(): HTMLElement | null {
+function nowBar(): HTMLElement {
   const now = state.now;
-  if (!now) return null;
 
-  const bar = el(`<aside class="nowbar" aria-label="Spilles nå">
-    <button class="nowbar__art" aria-label="Vis platen som spilles">
-      <span class="cover">${art(now.album, "sm")}</span>
+  /**
+   * Stacked, after the Qobuz reference the parent gave: the sleeve on top, the transport under
+   * it, and the output device named at the foot. The sleeve is the largest thing in the panel
+   * because it is the part he reads.
+   *
+   * The speaker line is the one piece of text on the child's screen, and it is there for the
+   * parent — he cannot read it and never needs to. It answers "why can I not hear anything",
+   * which until now could only be answered from the settings screen behind the keypad.
+   */
+  const out = state.settings.playerName;
+  const bar = el(`<aside class="nowbar" aria-label="Spilles nå" data-idle="${now ? 0 : 1}">
+    <button class="nowbar__art" aria-label="Vis platen som spilles"${now ? "" : " disabled"}>
+      ${now
+        ? `<span class="cover">${art(now.album, "sm")}</span>`
+        // Nothing has played yet. The mark, dim — a shape that belongs here rather than a
+        // hole, and one that cannot be mistaken for a record he owns.
+        : `<span class="nowbar__empty" aria-hidden="true">${ICON.logo}</span>`}
     </button>
     <div class="nowbar__ctl"></div>
+    <p class="nowbar__out" title="${esc(out ?? "")}">
+      <span class="nowbar__outIcon" aria-hidden="true">${ICON.out}</span>
+      <span class="nowbar__outName">${esc(out ?? "Ingen høyttaler")}</span>
+    </p>
   </aside>`);
 
-  bar.querySelector(".nowbar__art")!.addEventListener("click", () => openAlbum(now.album));
+  if (now) bar.querySelector(".nowbar__art")!.addEventListener("click", () => openAlbum(now.album));
 
+  /**
+   * The four controls are drawn whether or not anything is playing, and are inert when nothing
+   * is. They are part of the furniture of the screen, not something that appears with the
+   * music: a control that is only there sometimes is a control he has to find again each time,
+   * and at four the way he finds anything is by remembering where it was.
+   */
   const ctl = bar.querySelector(".nowbar__ctl")!;
-  const back = el(`<button class="btn btn--sm" aria-label="Forrige spor">${ICON.prev}</button>`);
-  back.addEventListener("click", prevTrack);
+  const btn = (cls: string, label: string, icon: string, enabled: boolean, onClick: () => void) => {
+    const b = el(`<button class="btn btn--sm ${cls}" aria-label="${label}">${icon}</button>`) as HTMLButtonElement;
+    b.disabled = !enabled;
+    if (enabled) b.addEventListener("click", onClick);
+    return b;
+  };
 
-  const go = el(`<button class="btn btn--sm btn--play" aria-label="Spill">${ICON.play}</button>`) as HTMLButtonElement;
-  go.disabled = state.playing;
-  go.addEventListener("click", () => { if (!state.playing) togglePlay(); });
-
-  const halt = el(`<button class="btn btn--sm" aria-label="Pause">${ICON.pause}</button>`) as HTMLButtonElement;
-  halt.disabled = !state.playing;
-  halt.addEventListener("click", () => { if (state.playing) togglePlay(); });
-
-  const skip = el(`<button class="btn btn--sm" aria-label="Neste spor">${ICON.next}</button>`);
-  skip.addEventListener("click", () => skipTrack(now.album, now.track));
-
-  ctl.append(back, go, halt, skip);
+  ctl.append(
+    btn("", "Forrige spor", ICON.prev, Boolean(now), prevTrack),
+    btn("btn--play", "Spill", ICON.play, Boolean(now) && !state.playing, () => togglePlay()),
+    btn("", "Pause", ICON.pause, state.playing, () => togglePlay()),
+    btn("", "Neste spor", ICON.next, Boolean(now), () => { if (now) skipTrack(now.album, now.track); }),
+  );
   return bar;
 }
 
@@ -1098,10 +1122,7 @@ function render() {
 
   // Only on the crate. The album view already carries the full-size transport, and two sets of
   // the same four controls on one screen is two things to learn.
-  if (state.view.name === "crate") {
-    const bar = nowBar();
-    if (bar) app.append(bar);
-  }
+  if (state.view.name === "crate") app.append(nowBar());
 
   // Settings has its own close, in its own header, and Esc. The child's home target would be a
   // third way out of a screen he should not be on, sitting on top of the footnote.

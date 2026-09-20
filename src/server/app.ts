@@ -174,7 +174,9 @@ export function createApp(db: DatabaseSync) {
         // The speaker is a setting like any other, but it also has to take effect NOW rather
         // than at the next boot, so the write and the live switch happen together.
         if (typeof patch.playerId === "string" && patch.playerId) {
-          if (!(await speaker.setTarget(patch.playerId).catch(() => false))) {
+          const named = await speaker.setTarget(patch.playerId).catch(() => null);
+          patch.playerName = named;
+          if (!named) {
             return json(res, 400, { error: "unknown player" });
           }
         }
@@ -231,14 +233,16 @@ export function createApp(db: DatabaseSync) {
         }
         const payload = await body(req);
         const id = String(payload.playerId ?? "");
+        let name: string | null;
         try {
-          if (!(await speaker.setTarget(id))) return json(res, 400, { error: "unknown player" });
+          name = await speaker.setTarget(id);
+          if (!name) return json(res, 400, { error: "unknown player" });
         } catch (e) {
           return maFailed(res, route, e);
         }
-        // Persist it, so the choice survives the next redeploy.
-        save(db, { playerId: id });
-        return json(res, 200, { ok: true, id });
+        // Persist both, so the choice AND its label survive the next redeploy.
+        save(db, { playerId: id, playerName: name });
+        return json(res, 200, { ok: true, id, name });
       }
 
       if (route.startsWith("/api/speaker/") && method === "POST") {

@@ -40,6 +40,8 @@ export interface Settings {
   volumeCeiling: number;
   volumeStart: number;
   sources: { listenbrainz: boolean; lastfm: boolean; deezer: boolean; charts: boolean };
+  /** The chosen speaker's display name, cached server-side when it was picked. */
+  playerName?: string | null;
   /** Which of those the server can actually act on. Absent means assume all, for old servers. */
   sourcesAvailable?: Partial<Record<"listenbrainz" | "lastfm" | "deezer" | "charts", boolean>>;
   /** The child gate's digits, from the server so the two parent surfaces share one code. */

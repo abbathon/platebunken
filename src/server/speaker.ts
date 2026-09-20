@@ -168,12 +168,21 @@ export async function players(): Promise<PlayerOption[]> {
     .sort((a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name));
 }
 
-export async function setTarget(playerId: string): Promise<boolean> {
+/**
+ * Choose the output. Returns the player's name, or null when MA does not know that id.
+ *
+ * The NAME comes back so it can be stored beside the id. The child's page shows which speaker
+ * is playing, and it must be able to say "Stua" without asking Music Assistant for the player
+ * list — that is a parent-surface call behind the keypad (§4.6), and the crate is not allowed
+ * to ask MA what exists.
+ */
+export async function setTarget(playerId: string): Promise<string | null> {
   const c = await ma();
-  if (!c.player(playerId)) return false;
+  const p = c.player(playerId);
+  if (!p) return null;
   targetOverride = playerId;
   console.log(`[speaker] output switched to ${playerId}`);
-  return true;
+  return p.name ?? playerId;
 }
 
 export interface PlayRequest {
