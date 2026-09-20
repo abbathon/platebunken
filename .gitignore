@@ -44,3 +44,7 @@ src/ui/public/library.json
 ansible/inventory.yml
 ansible/group_vars/kiosk.yml
 ansible/*.retry
+
+# Site-specific secret-scan patterns. NEVER commit: the strings most worth catching are
+# the ones that must not appear in a public repository. See scripts/scan-secrets.sh.
+.secret-patterns.local

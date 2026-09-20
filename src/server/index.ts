@@ -17,6 +17,7 @@ import { openStore } from "../store/db.ts";
 import { ensureProfile, counts } from "../store/crate.ts";
 import { CHECK_INTERVAL_MS, runTrickle } from "./trickle.ts";
 import { CURATE_HOUR, runCuration } from "./curation.ts";
+import { BACKUP_HOUR, existingBackups, backupDir, runBackup } from "./backup.ts";
 import { enabledSources } from "../curate/worker.ts";
 import { config, canPlay } from "./config.ts";
 import { createApp } from "./app.ts";
@@ -63,6 +64,18 @@ function announce(): void {
   } else {
     console.warn(`  ! every suggestion source is off in Settings → Kilder; the review queue will not refill.`);
   }
+  /**
+   * The backup schedule and what is already kept. Said at boot because a backup nobody has
+   * seen is a backup nobody has checked, and the failure mode of a silently-stopped backup is
+   * that it is believed in right up until it is needed.
+   */
+  const kept = existingBackups(backupDir(config.databasePath));
+  const keep = config.backupKeep;
+  console.log(
+    `  backup   daily after ${String(BACKUP_HOUR).padStart(2, "0")}:00 local, ` +
+    `keeping ${keep === 0 ? "every one" : `the last ${keep}`}` +
+    (kept.length ? `; newest ${kept[kept.length - 1]}, ${kept.length} on disk` : `; none yet`),
+  );
   if (canPlay()) {
     console.log(`  speaker  ${config.playerId} via ${config.ma.baseUrl}, ceiling ${config.volume.ceiling}/100`);
   } else {
@@ -120,11 +133,22 @@ function curation(): void {
   });
 }
 
+/**
+ * The crate backs itself up (§3.1, `backup.ts`).
+ *
+ * Shares the same half-hourly wake-up as the other two. Synchronous and quick — the store is
+ * hundreds of kilobytes — so unlike curation there is nothing to await and nothing to overlap.
+ */
+function backup(): void {
+  runBackup(db, { databasePath: config.databasePath, keep: config.backupKeep });
+}
+
 server.listen(config.port, config.host, () => {
   announce();
   trickle();
   curation();
-  setInterval(() => { trickle(); curation(); }, CHECK_INTERVAL_MS).unref();
+  backup();
+  setInterval(() => { trickle(); curation(); backup(); }, CHECK_INTERVAL_MS).unref();
 });
 
 /**

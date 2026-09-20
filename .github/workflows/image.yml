@@ -29,6 +29,19 @@ env:
   IMAGE: ${{ github.repository }}
 
 jobs:
+  # This repository is public, so a leak is public the moment it is pushed. This used to be a
+  # grep ritual written down in a handoff document — a rule whose whole job is to catch what
+  # you did not notice, kept in the one place that only works if you remember it.
+  #
+  # It gates `publish` as well as running on its own, because the image ships .ts: a secret in
+  # the source is a secret in the registry, and the registry is the harder of the two to take
+  # back.
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/scan-secrets.sh --tree
+
   # The image build runs `npm run typecheck` itself, but not the tests, and an image that
   # builds is not the same as one that works. The store's invariants, the volume ceiling and
   # the approval gate are all defended by tests; publishing past a red one would make the
@@ -46,7 +59,7 @@ jobs:
       - run: npm test
 
   publish:
-    needs: test
+    needs: [test, scan]
     runs-on: ubuntu-latest
     permissions:
       contents: read

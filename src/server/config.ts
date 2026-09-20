@@ -80,6 +80,15 @@ export const config = {
     provider: str("SEED_PLAYLIST_PROVIDER", "qobuz"),
   },
 
+  /**
+   * How many daily backups of the crate to keep in the volume, beside the store.
+   *
+   * A week by default: long enough that a mistake made on a Friday is still recoverable on a
+   * Monday, short enough that a volume nobody watches cannot fill with them. 0 keeps every
+   * backup forever, which is a choice and not a mistake — see `prune`.
+   */
+  backupKeep: int("BACKUP_KEEP", 7),
+
   curate: {
     /**
      * Ceiling on how many albums one curation run may add to the queue. Ten seconds a day at

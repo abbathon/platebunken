@@ -120,6 +120,17 @@ npm run typecheck
 npm run pb           # curate, seed and backup against ./data
 ```
 
+Enable the pre-commit secret scan once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+It refuses commits containing token shapes, private addresses or LAN hostnames. CI runs the
+same script on every push and gates publishing on it. Site-specific patterns go in
+`.secret-patterns.local`, which is gitignored — the strings most worth catching are the ones
+that must not appear in a public repository.
+
 There are no runtime dependencies — the store is `node:sqlite`, the server is `node:http`, and
 the runtime image carries no `node_modules`.
 

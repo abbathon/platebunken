@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+#
+# Refuse to commit a secret. Enable once per clone:
+#
+#     git config core.hooksPath .githooks
+#
+# A hook cannot be installed by the repository itself — git will not run hooks it was handed —
+# so this is opt-in per clone and CI runs the same script regardless. That is deliberate
+# belt-and-braces: the hook saves you from writing the commit, CI saves you from pushing it.
+exec "$(git rev-parse --show-toplevel)/scripts/scan-secrets.sh" --staged
