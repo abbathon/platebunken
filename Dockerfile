@@ -42,6 +42,14 @@ RUN npm run typecheck && npm run build
 FROM node:26-alpine AS runtime
 WORKDIR /app
 
+# OCI metadata, so the published package states its own provenance and licence rather than
+# making someone go and look. The fonts under dist/public/fonts are NOT MIT — they are SIL
+# OFL 1.1 and carry their own OFL.txt beside them, which is how that licence travels.
+LABEL org.opencontainers.image.title="platebunken" \
+      org.opencontainers.image.description="A record vault for a pre-reader" \
+      org.opencontainers.image.source="https://github.com/abbathon/platebunken" \
+      org.opencontainers.image.licenses="MIT"
+
 ENV NODE_ENV=production \
     PORT=8080 \
     HOST=0.0.0.0 \
@@ -60,6 +68,9 @@ ENV NODE_ENV=production \
 # reachable way to refill the review queue, and `npm run curate` on a laptop wrote to a stale
 # copy of the store that is no longer the product. Curation is now scheduled in-process
 # (src/server/curation.ts) and reachable as `pb curate`, so it runs here and belongs here.
+# The MIT licence requires its notice to travel with every copy, and an image is a copy.
+# The fonts' OFL ships separately, beside the fonts themselves in dist/public/fonts/.
+COPY LICENSE ./
 COPY package.json ./
 COPY src/ma ./src/ma
 COPY src/store ./src/store

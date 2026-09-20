@@ -1,6 +1,7 @@
 {
   "name": "platebunken",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "node --env-file=.env scripts/dev.ts",

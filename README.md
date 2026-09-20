@@ -125,6 +125,24 @@ the runtime image carries no `node_modules`.
 
 `npm run smoke -- --play` starts real music on a real speaker.
 
+## Licence
+
+[MIT](LICENSE).
+
+The three bundled typefaces are **not** MIT. Andika, Archivo and Lexend are each under the
+[SIL Open Font License 1.1](src/ui/public/fonts/OFL.txt), which ships beside them in
+`src/ui/public/fonts/` and is served at `/fonts/OFL.txt` by any running instance.
+
+There are no runtime dependencies, so nothing else is redistributed. The build-time tools —
+TypeScript, Vite and `@types/node` — are Apache-2.0 and MIT respectively and are not part of
+the image.
+
+Album metadata and artwork come from whatever providers your own Music Assistant is configured
+with. Suggestions come from [ListenBrainz](https://listenbrainz.org/),
+[MusicBrainz](https://musicbrainz.org/), [Deezer](https://developers.deezer.com/) and
+[Metal Archives](https://www.metal-archives.com/); each is queried under its own terms and
+rate limits, and none of their data is redistributed here.
+
 ## Name
 
 *Platebunken* — Norwegian for "the record stack".
