@@ -1,6 +1,12 @@
 <img src="brand/logo.svg" alt="Platebunken" height="46">
 
-A record crate for a pre-reader.
+A record vault for a pre-reader.
+
+The aim is to provide an enviroment for discovering music, trough album covers, giving the child "ownership" and emotional investment to the music and artists.
+
+Developed using Claude Code as a tool.
+
+## AI-slop:
 
 A locked-down appliance that recreates discovering music by flipping through physical album
 covers — a grid of cover art on a screen in a child's bedroom. Tap a cover, the record plays.
