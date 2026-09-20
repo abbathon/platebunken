@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 64" role="img" aria-label="Platebunken">
+  <!--
+    Horizontal lockup with the brand amber BAKED IN, for surfaces that inherit no colour.
+
+    logo.svg is currentColor and must stay that way — it is for surfaces whose theme should
+    reach it. This one is for surfaces where nothing does: a README rendered on GitHub gets no
+    colour from the page, so currentColor resolved to near-black and the mark disappeared
+    entirely in dark mode. #ffb84d is the same amber favicon.svg bakes, and it holds against
+    both a white and a near-black background, which is why one file serves both themes and
+    there is no <picture> switch here to keep in step.
+
+    The wordmark is live text in Archivo rather than outlines, so it stays editable and this
+    file stays small. Anything that renders it without Archivo available gets the system sans
+    and a slightly different logo.
+  -->
+  <g fill="#ffb84d">
+    <rect x="3" y="50" width="58" height="4.5" rx="1.5"/>
+    <rect x="5"    y="17" width="3.5" height="33" rx="1"/>
+    <rect x="10.5" y="17" width="3.5" height="33" rx="1"/>
+    <rect x="16"   y="17" width="3.5" height="33" rx="1"/>
+    <rect x="21.5" y="17" width="3.5" height="33" rx="1"/>
+    <rect x="27"   y="17" width="3.5" height="33" rx="1"/>
+    <path fill-rule="evenodd" transform="rotate(-6 34 50)"
+          d="M34 23h27v27H34z
+             M47.5 29.9a6.6 6.6 0 1 0 0 13.2 6.6 6.6 0 0 0 0-13.2z"/>
+    </g>
+  <text x="78" y="45" fill="#ffb84d"
+        font-family="Archivo, 'Helvetica Neue', Arial, sans-serif"
+        font-size="34" font-weight="800" letter-spacing="-0.5">PLATEBUNKEN</text>
+</svg>

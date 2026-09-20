@@ -17,6 +17,7 @@ outlives it, which is the right way round.
 |---|---|
 | `mark.svg` | The mark alone, `currentColor`, no field. Use this anywhere the surrounding theme should reach it. |
 | `logo.svg` | Horizontal lockup, mark + wordmark, `currentColor`. |
+| `logo-amber.svg` | The same lockup with the amber **baked**, for surfaces that pass down no colour — the repo README is one. |
 | `favicon.svg` | The mark on an amber field, colours **baked** — a favicon renders outside the page and inherits nothing from it. |
 | `favicon.ico` | 16/32/48 PNGs in an ICO container. Only for the tab. |
 | `icon-*.png` | Rasters at 16, 32, 48, 180 (apple-touch) and 512. |
@@ -26,9 +27,13 @@ outlives it, which is the right way round.
 - **The mark sits small at the top of the child's screens**, beside the way in to settings. An
   earlier rule here said it never appeared on any surface he touches; the parent reversed that.
   What it protected still holds: no splash, no boot screen, nothing that delays him.
-- `mark.svg` and `logo.svg` are `currentColor` and must stay that way. `favicon.svg` is the one
-  that bakes colour, and it bakes amber on near-black so it holds against a light tab strip and a
-  dark one alike.
+- `mark.svg` and `logo.svg` are `currentColor` and must stay that way — they are for surfaces
+  whose theme should reach them.
+- `favicon.svg` and `logo-amber.svg` bake colour, for the same reason: they render where nothing
+  passes any down. `currentColor` then resolves to near-black, which on GitHub's dark theme is a
+  logo nobody can see. Both bake `#ffb84d`, which holds against a white and a near-black
+  background alike — so one file serves both themes and there is no `<picture>` switch to keep
+  in step.
 - `logo.svg` sets its wordmark as live text in Archivo. Without that font it falls back to the
   system sans and the logo is slightly different. If that ever matters, convert this one file to
   outlines — do not start self-hosting a font for a mark that appears on two surfaces.
