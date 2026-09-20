@@ -44,15 +44,16 @@ Two consequences, both of which have to be handled deliberately:
 
 - Docker Engine with the Compose plugin.
 - Network access to `ghcr.io`, and to Music Assistant on the LAN.
-- If the repository is private, its GHCR package is private too:
 
-  ```
-  docker login ghcr.io -u <github-username>     # paste a PAT with read:packages
-  ```
+**No `docker login` is needed.** The GHCR package is public, so the pull is anonymous —
+verified by pulling `0.2.2` with an empty Docker credential store. The image contains no
+credential of any kind; §3.1 calls a publishable image the test of that, and the build never
+touches `.env`.
 
-  The image contains **no credential** — §3.1 calls a publishable image the test of that, and
-  the build never touches `.env` — so the package may instead be made public while the
-  repository stays private. That removes this step entirely.
+Note that package visibility is **separate from repository visibility** and is not inherited.
+Making the repo public left the package private, and the only symptom was a `denied` on pull
+for everyone except the account that published it. It is changed in the UI only — there is no
+REST endpoint — under the package's own settings, Danger Zone.
 
 ## 2. Files on the host
 

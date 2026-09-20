@@ -26,9 +26,10 @@
 services:
   platebunken:
     # Published by .github/workflows/image.yml on every push to main and on every v* tag.
-    # The registry package is private while the repo is; the host needs one `docker login
-    # ghcr.io` with a token scoped read:packages. The image itself holds no credential — §3.1
-    # calls a publishable image the test of that — so the package may be made public instead.
+    # The package is PUBLIC, so this pulls anonymously and needs no `docker login`. The image
+    # holds no credential — §3.1 calls a publishable image the test of that. Package visibility
+    # is its own setting and is NOT inherited from the repository: they were out of step once,
+    # and the only symptom was `denied` on pull for everyone but the publishing account.
     image: ghcr.io/abbathon/platebunken:${PLATEBUNKEN_TAG:-latest}
     container_name: platebunken
     restart: unless-stopped
