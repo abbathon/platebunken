@@ -273,6 +273,9 @@ export function createApp(db: DatabaseSync) {
             case "/api/speaker/next":
               await speaker.next();
               return json(res, 200, { ok: true });
+            case "/api/speaker/previous":
+              await speaker.previous();
+              return json(res, 200, { ok: true });
           }
         } catch (e) {
           return maFailed(res, route, e);

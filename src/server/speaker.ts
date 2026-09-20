@@ -226,6 +226,13 @@ export const playPause = async () => { await (await ma()).playPause(target()); }
 export const next = async () => { await (await ma()).next(target()); };
 
 /**
+ * Back one track. Asked of Music Assistant rather than re-issued as a play at track n-1,
+ * because MA owns the queue and is the only thing that knows where in it the record actually
+ * is — the page's idea of the current track is a copy that autoplay can move underneath it.
+ */
+export const previous = async () => { await (await ma()).previous(target()); };
+
+/**
  * Whether this process can actually play anything right now.
  *
  * **Asks `target()`, not `config.playerId`,** and that distinction was a real bug: a

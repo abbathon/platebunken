@@ -18,6 +18,9 @@ const ICON = {
   play:  `<svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.53.85l10-6.5a1 1 0 0 0 0-1.7l-10-6.5A1 1 0 0 0 8 5.5Z"/></svg>`,
   pause: `<svg viewBox="0 0 24 24"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg>`,
   next:  `<svg viewBox="0 0 24 24"><path d="M6 5.5v13a1 1 0 0 0 1.53.85L16 13.9V18a1 1 0 0 0 2 0V6a1 1 0 0 0-2 0v4.1L7.53 4.65A1 1 0 0 0 6 5.5Z"/></svg>`,
+  // The mirror of `next`, to the pixel. Two controls that do opposite things must look like
+  // each other reversed, or they are two shapes to learn instead of one.
+  prev:  `<svg viewBox="0 0 24 24"><path d="M18 5.5v13a1 1 0 0 1-1.53.85L8 13.9V18a1 1 0 0 1-2 0V6a1 1 0 0 1 2 0v4.1l8.47-5.45A1 1 0 0 1 18 5.5Z"/></svg>`,
   left:  `<svg viewBox="0 0 24 24"><path d="M15.2 3.8 7 12l8.2 8.2 1.6-1.6L10.2 12l6.6-6.6z"/></svg>`,
   right: `<svg viewBox="0 0 24 24"><path d="m8.8 3.8 8.2 8.2-8.2 8.2-1.6-1.6L13.8 12 7.2 5.4z"/></svg>`,
   home:  `<svg viewBox="0 0 24 24"><path d="M4 9.5 12 3l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>`,
@@ -45,7 +48,12 @@ const ICON = {
 // `now` is what is PLAYING. `view` is what is ON SCREEN. They were one thing, which meant the
 // crate had no way to know a record was running and could not mark the sleeve it came from —
 // and a four-year-old who walks away and comes back does not hold that in his head.
-type View = { name: "crate" } | { name: "playing" } | { name: "admin" };
+/**
+ * `album` is the record he is LOOKING at. `state.now` is the record that is PLAYING, and they
+ * are no longer the same thing: opening a sleeve does not start it, so he can look through the
+ * crate while something plays without interrupting it.
+ */
+type View = { name: "crate" } | { name: "album"; album: Album } | { name: "admin" };
 type Shelf = "crate" | "new" | "recent" | "played";
 
 const state = {
@@ -489,7 +497,27 @@ const play = (album: Album | null | undefined, track = 1) => {
   state.now = { album, track };
   state.focusTrack = track;
   state.playing = true;
-  state.view = { name: "playing" };
+  // Deliberately does NOT change the view. Starting a record is not the same act as going to
+  // look at one, and a screen that jumped on every press would take the crate away from him
+  // mid-browse.
+  render();
+};
+
+/**
+ * Open a sleeve. **Does not start it.**
+ *
+ * This reverses "tap a cover, the record plays", at the parent's decision after watching it
+ * used: tapping a cover to see what a record is would stop whatever was already playing, so
+ * browsing and listening could not happen at the same time. Now the crate is a crate — you can
+ * pull a sleeve out and look at it while the music keeps going — and the number line's own play
+ * control, or any track row, is what starts it.
+ */
+const openAlbum = (album: Album | null | undefined) => {
+  // The same non-event as pressing Enter on a withdrawn album's gap: no sound, no error, no
+  // screen change. Silence is an answer.
+  if (!album) return;
+  state.focusTrack = state.now?.album.id === album.id ? state.now.track : 1;
+  state.view = { name: "album", album };
   render();
 };
 
@@ -572,7 +600,7 @@ function wall(): HTMLElement {
   const grid = root.querySelector(".wall__grid") as HTMLElement;
   if (flipped && !scrubbing) grid.dataset.flip = dir > 0 ? "right" : "left";
   list.slice(state.page * per, state.page * per + per).forEach((a, i) => {
-    const cell = a ? coverEl(a, play) : emptySlot();
+    const cell = a ? coverEl(a, openAlbum) : emptySlot();
     // Column order, counted from the edge the page is coming in from.
     const col = i % COLS;
     cell.style.setProperty("--d", String(dir > 0 ? COLS - 1 - col : col));
@@ -616,7 +644,7 @@ function wall(): HTMLElement {
 //
 // §4.3 asked for a near-fullscreen cover and no list. That was written before anyone watched a
 // child use it. The list stays; the cover gives up some size for it.
-function nowPlaying(album: Album, track: number): HTMLElement {
+function albumView(album: Album, track: number): HTMLElement {
   const root = el(`<section class="stage np">
     <div class="np__art"><div class="cover" id="np-art">${art(album, "lg")}</div></div>
     <div class="np__side">
@@ -657,13 +685,110 @@ function nowPlaying(album: Album, track: number): HTMLElement {
     list.append(row);
   }
 
+  /**
+   * The transport: back, play, pause, forward. Four buttons, each with one meaning that never
+   * changes.
+   *
+   * This was one button that showed play or pause depending on state, which is the convention
+   * everywhere and is wrong here. Principle 2 — nothing he has memorised ever moves — applies
+   * to meaning as much as to position: a control whose symbol swaps under his finger is two
+   * controls sharing a place, and at four he is learning the shape, not reading the state. Two
+   * buttons that are always themselves cost one extra target and remove the guessing.
+   *
+   * The inactive one is dimmed rather than removed, so the row never reflows and both stay
+   * where he left them.
+   */
   const tp = root.querySelector(".transport")!;
-  const pp = el(`<button class="btn btn--lg btn--play" aria-label="${state.playing ? "Pause" : "Spill"}">${state.playing ? ICON.pause : ICON.play}</button>`);
-  pp.addEventListener("click", () => { togglePlay(); });
+  const mine = state.now?.album.id === album.id;
+  const sounding = mine && state.playing;
+
+  const back = el(`<button class="btn btn--lg" aria-label="Forrige spor">${ICON.prev}</button>`);
+  back.addEventListener("click", () => prevTrack());
+
+  const go = el(`<button class="btn btn--lg btn--play" aria-label="Spill">${ICON.play}</button>`) as HTMLButtonElement;
+  go.disabled = sounding;
+  // Not merely "resume". If this record is not the one playing, the play button starts THIS
+  // one — which is the whole way a record begins now that a cover tap no longer starts it.
+  go.addEventListener("click", () => {
+    if (mine && !state.playing) { togglePlay(); return; }
+    play(album, state.focusTrack || 1);
+  });
+
+  const halt = el(`<button class="btn btn--lg" aria-label="Pause">${ICON.pause}</button>`) as HTMLButtonElement;
+  halt.disabled = !sounding;
+  halt.addEventListener("click", () => { if (sounding) togglePlay(); });
+
   const skip = el(`<button class="btn btn--lg" aria-label="Neste spor">${ICON.next}</button>`);
-  skip.addEventListener("click", () => skipTrack(album, track));
-  tp.append(pp, skip);
+  skip.addEventListener("click", () => skipTrack(album, track || state.focusTrack));
+
+  tp.append(back, go, halt, skip);
   return root;
+}
+
+/**
+ * Back one track, asked of Music Assistant rather than recomputed here.
+ *
+ * MA owns the queue and is the only thing that knows where in the record it actually is: the
+ * page's `state.now.track` is a copy, and autoplay moves the real one underneath it. Pressing
+ * back at track 1 is a non-event rather than an error — half of all presses miss, and every
+ * miss must be harmless.
+ */
+function prevTrack(): void {
+  const now = state.now;
+  if (!now) return;
+  if (SPEAKER?.configured) speaker.previous();
+  if (now.track > 1) {
+    state.now = { album: now.album, track: now.track - 1 };
+    state.focusTrack = now.track - 1;
+  }
+  render();
+}
+
+/**
+ * What is playing, on the crate screen — bottom left, out of the covers' way.
+ *
+ * "It is hard to tell what is playing" was the first thing said after real use, and it became
+ * true the moment a cover tap stopped starting the record: browsing and listening are separate
+ * now, so the crate has to carry the answer to *what is on* without being asked.
+ *
+ * The sleeve is the answer, not a title. He cannot read, and he already knows this record BY
+ * its cover — so the cover is both the statement and the way back into it: tapping it opens
+ * that record's number line.
+ *
+ * Drawn small and hit large. The glyphs sit on a 52 px disc so the bar stays a footnote beside
+ * nine covers, while every control keeps the full 76 px target the crate is built on — half of
+ * all taps miss at this age, and a miss here must land on another button rather than on nothing.
+ */
+function nowBar(): HTMLElement | null {
+  const now = state.now;
+  if (!now) return null;
+
+  const bar = el(`<aside class="nowbar" aria-label="Spilles nå">
+    <button class="nowbar__art" aria-label="Vis platen som spilles">
+      <span class="cover">${art(now.album, "sm")}</span>
+    </button>
+    <div class="nowbar__ctl"></div>
+  </aside>`);
+
+  bar.querySelector(".nowbar__art")!.addEventListener("click", () => openAlbum(now.album));
+
+  const ctl = bar.querySelector(".nowbar__ctl")!;
+  const back = el(`<button class="btn btn--sm" aria-label="Forrige spor">${ICON.prev}</button>`);
+  back.addEventListener("click", prevTrack);
+
+  const go = el(`<button class="btn btn--sm btn--play" aria-label="Spill">${ICON.play}</button>`) as HTMLButtonElement;
+  go.disabled = state.playing;
+  go.addEventListener("click", () => { if (!state.playing) togglePlay(); });
+
+  const halt = el(`<button class="btn btn--sm" aria-label="Pause">${ICON.pause}</button>`) as HTMLButtonElement;
+  halt.disabled = !state.playing;
+  halt.addEventListener("click", () => { if (state.playing) togglePlay(); });
+
+  const skip = el(`<button class="btn btn--sm" aria-label="Neste spor">${ICON.next}</button>`);
+  skip.addEventListener("click", () => skipTrack(now.album, now.track));
+
+  ctl.append(back, go, halt, skip);
+  return bar;
 }
 
 /** Play/pause, everywhere. The page's own state stays authoritative for what is drawn. */
@@ -860,13 +985,13 @@ function onKey(e: KeyboardEvent): void {
     }
     case "Enter":
       e.preventDefault();
-      if (where === "crate") play(shown()[state.cursor]);
-      else if (now) play(now.album, state.focusTrack);
+      if (where === "crate") openAlbum(shown()[state.cursor]);
+      else if (where === "album") play(state.view.name === "album" ? state.view.album : null, state.focusTrack);
       return;
     case " ":
       // Space is play/pause everywhere, the way every media player has worked forever.
       e.preventDefault();
-      if (where === "crate") play(shown()[state.cursor]);
+      if (where === "crate") openAlbum(shown()[state.cursor]);
       else togglePlay();
       return;
     case "Escape":
@@ -936,8 +1061,9 @@ function render() {
         render();
       },
     }));
-  } else if (state.view.name === "playing" && now) {
-    app.append(nowPlaying(now.album, now.track));
+  } else if (state.view.name === "album") {
+    const a = state.view.album;
+    app.append(albumView(a, state.now?.album.id === a.id ? state.now.track : 0));
   } else if (!CRATE || albums().length === 0) {
     /**
      * No crate, no wall. Not an empty grid: an empty grid reads as "your music is gone",
@@ -970,9 +1096,16 @@ function render() {
     app.append(left, shelfRail());
   }
 
+  // Only on the crate. The album view already carries the full-size transport, and two sets of
+  // the same four controls on one screen is two things to learn.
+  if (state.view.name === "crate") {
+    const bar = nowBar();
+    if (bar) app.append(bar);
+  }
+
   // Settings has its own close, in its own header, and Esc. The child's home target would be a
   // third way out of a screen he should not be on, sitting on top of the footnote.
-  if (state.view.name === "playing") {
+  if (state.view.name === "album") {
     const home = el(`<button class="btn home" aria-label="Tilbake til bunken">${ICON.home}</button>`);
     home.addEventListener("click", goHome);
     app.append(home);

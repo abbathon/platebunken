@@ -281,4 +281,5 @@ export class MassClient {
   pause(playerId: string) { return this.command("players/cmd/pause", { player_id: playerId }); }
   playPause(playerId: string) { return this.command("players/cmd/play_pause", { player_id: playerId }); }
   next(playerId: string) { return this.command("players/cmd/next", { player_id: playerId }); }
+  previous(playerId: string) { return this.command("players/cmd/previous", { player_id: playerId }); }
 }

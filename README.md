@@ -8,9 +8,9 @@ Developed using Claude Code as a tool.
 
 ## What it is
 
-A grid of album covers on a screen in a child's bedroom. Tap a cover, the record plays. No text
-to read, no search, no menus, no way out. It does four things — **browse, play, volume, skip** —
-and refuses the fifth.
+A grid of album covers on a screen in a child's bedroom. Tap a cover to pull the sleeve out and
+see its tracks; tap a number to play it. No text to read, no search, no menus, no way out. It
+browses, plays, pauses, skips and sets the volume, and refuses everything else.
 
 Music comes from [Music Assistant](https://music-assistant.io/). Albums reach the child only
 after a parent has approved them, from a review queue on their phone.

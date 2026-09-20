@@ -149,7 +149,33 @@ html, body {
 .btn--play { color: var(--on-glow); }
 .btn--play::before { background: color-mix(in oklab, var(--glow) 70%, black); }
 .btn--play::after  { background: var(--glow); }
+/**
+ * A disabled play is a plain dim disc, never a dimmed accent.
+ *
+ * `opacity` over the glow turned the button muddy brown — a colour that appears nowhere else in
+ * any theme and reads as a fault rather than as "not now". Play keeps its accent wherever it can
+ * be pressed, which is what makes it findable; where it cannot, it steps back into the same
+ * neutral as its neighbours and stays exactly where he left it.
+ */
+.btn--play[disabled] { color: var(--ink); }
+.btn--play[disabled]::before { background: var(--edge); }
+.btn--play[disabled]::after  { background: var(--bg-raised); }
 @media (hover: hover) { .btn--play:hover::after { background: color-mix(in oklab, var(--glow) 86%, white); } }
+/**
+ * Small to look at, full size to hit.
+ *
+ * The plate is inset to a 52 px disc while the button keeps the 76 px floor, so the now-playing
+ * bar reads as a footnote beside nine covers and still cannot be missed. The inset lives on the
+ * pseudo-elements, never on the button: `clip-path` on a control clips its hit area too, which
+ * is how a previous control here became visually perfect and physically unpressable.
+ */
+.btn--sm { min-width: var(--target); min-height: var(--target); }
+.btn--sm::before { inset: 12px; }
+.btn--sm::after  { inset: 14px; }
+.btn--sm svg { width: 24px; height: 24px; }
+
+/* Dim, not gone. A control that disappears when inactive takes its position with it, and
+   position is the only index he has. */
 .btn[disabled] { opacity: 0.28; pointer-events: none; }
 
 /* Edge dead-zones: children press with the whole finger pad, often at an angle. The side
@@ -205,8 +231,21 @@ html, body {
    for. §4.3 asked for a near-fullscreen cover and no list; that was written before anyone
    watched a child use it. */
 .np { grid-template-columns: minmax(0, 1fr) minmax(300px, 0.9fr); gap: clamp(24px, 3.4vw, 56px); align-items: center; }
+/* Below this the number line and the transport cannot both have their room beside a cover, and
+   something has to give. The cover gives: it is the one element here that is already known from
+   the crate, while the number line is the part that is being read. The kiosk is 1366 wide and
+   never sees this. */
+@media (max-width: 1100px) {
+  .np { grid-template-columns: minmax(0, 1fr); align-content: center; }
+  .np__art { max-width: min(38vh, 100%); }
+}
 .np__art { width: 100%; max-width: min(66vh, 100%); justify-self: center; }
-.np__side { display: grid; gap: 18px; align-content: center; min-height: 0; }
+/* `min-width: 0` is load-bearing. A grid column refuses to shrink below its content's
+   min-content width, and a track title that cannot wrap makes that width whatever the longest
+   title happens to be — so a long title pushed the whole number line out from under the stage's
+   padding and under the right rail, where the rail sat on top of the rows. Measured at 1280px:
+   9px under the rail, and 154px at 900px. */
+.np__side { display: grid; gap: 18px; align-content: center; min-height: 0; min-width: 0; }
 .np__artist {
   font-size: clamp(26px, 3.6vw, 52px); font-weight: 800; letter-spacing: -0.03em;
   line-height: 0.96; margin: 0;
@@ -231,13 +270,38 @@ html, body {
   font-variant-numeric: tabular-nums; letter-spacing: -0.04em;
   color: var(--ink-dim); text-align: right;
 }
-.track__t { font-size: 18px; color: var(--ink-dim); }  /* themed; the contrast floor is tested in src/theme */
+/* Truncates rather than widening the column. The title is for the parent and is explicitly
+   non-functional for the child (§4.2) — it is the first thing that should give way. */
+.track__t {
+  font-size: 18px; color: var(--ink-dim);   /* themed; the contrast floor is tested in src/theme */
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .track[aria-current="true"] { background: var(--glow); border-radius: 6px; border-bottom-color: transparent; }
 .track[aria-current="true"] .track__n { color: var(--on-glow); }
 .track[aria-current="true"] .track__t { color: var(--on-glow-dim); }
 @media (hover: hover) { .track:hover:not([aria-current="true"]) { background: var(--bg-raised); border-radius: 6px; } }
 
-.transport { display: flex; gap: clamp(18px, 3vw, 40px); align-items: center; flex-wrap: wrap; justify-content: center; }
+/* Four controls, one row, always. It used to wrap, and a wrapped transport puts `next` on a
+   line of its own in a different place depending on the width — which for a child navigating by
+   position is the control moving house. The gap yields before the row breaks. */
+.transport {
+  display: flex; gap: clamp(8px, 2vw, 32px);
+  align-items: center; flex-wrap: nowrap; justify-content: center;
+}
+/**
+ * The buttons give way before the row does, down to the 76 px floor and never below it.
+ *
+ * Pinning four 108 px buttons in a row that cannot wrap made the transport's minimum width
+ * wider than its grid column, and the column then pushed the whole number line out from under
+ * the stage's padding and under the right rail. Measured: clear by 32 px before, 9 px *under*
+ * the rail after. The floor is the one dimension that may not be traded, so the size between
+ * floor and full is what flexes.
+ */
+.transport .btn--lg {
+  flex: none;
+  min-width: clamp(var(--target), 8vw, 108px);
+  min-height: clamp(var(--target), 8vw, 108px);
+}
 
 /* Vertical, under the theme discs, on every screen. Louder is up — the one mapping he can
    already be assumed to hold. */
@@ -704,3 +768,39 @@ html, body {
 .marks__glyph svg[stroke] [fill="currentColor"] { fill: currentColor; }
 .marks__bar { display: block; width: 22px; height: 7px; border-radius: 2px; background: currentColor; }
 .marks__name { font-size: 10.5px; letter-spacing: 0.02em; text-align: center; line-height: 1.15; }
+
+
+/* ── what is playing, on the crate ────────────────────────────────
+   Bottom left, clear of the left rail's 76 px column so it can never sit under the theme discs
+   or the volume blocks. It appears only when something is playing and only on the crate: the
+   album view has the full-size transport, and the same four controls twice on one screen is
+   two things to learn instead of one.
+
+   The sleeve carries the answer. He cannot read a title, and he already knows the record by its
+   cover — so the cover IS the label, and it is also the way back into that record. */
+.nowbar {
+  position: fixed; z-index: 45;
+  left: calc(16px + var(--target) + 14px); bottom: 18px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px 8px 8px;
+  border-radius: 16px;
+  background: color-mix(in oklab, var(--bg-raised) 88%, var(--bg));
+  border: 1px solid var(--edge);
+  box-shadow: 0 10px 28px -12px rgb(0 0 0 / 0.55);
+}
+.nowbar__art {
+  width: 56px; height: 56px; flex: none;
+  padding: 0; border: 0; background: none; cursor: default;
+  border-radius: 8px; overflow: hidden;
+  /* Its own hit area is below the floor on purpose: it is not a verb. Missing it lands on the
+     bar, which does nothing, and the four controls beside it are all full size. */
+}
+.nowbar__art .cover { display: block; width: 100%; height: 100%; }
+.nowbar__art img, .nowbar__art svg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.nowbar__ctl { display: flex; align-items: center; gap: 2px; }
+
+/* The bar is a footnote, so it yields to a narrow screen rather than crowding the covers. */
+@media (max-width: 720px) {
+  .nowbar { left: 50%; transform: translateX(-50%); }
+  .nowbar__art { display: none; }
+}

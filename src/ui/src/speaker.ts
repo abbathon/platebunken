@@ -83,6 +83,7 @@ export const speaker = {
     post("play", { uri, step, steps, startIndex, startUri }),
   playPause: () => post("playpause"),
   next: () => post("next"),
+  previous: () => post("previous"),
   volume: (step: number, steps: number) => post("volume", { step, steps }),
   /** Switch output. The server owns the target; the page only names one. */
   setTarget: (playerId: string) => post("target", { playerId }),

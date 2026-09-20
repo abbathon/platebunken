@@ -15,7 +15,8 @@ no tokens, no IPs anywhere in this repository. Everything environment-specific l
 ## 1. What this is
 
 A locked-down appliance that recreates discovering music by flipping through physical album
-covers. A grid of cover art on a screen in the child's bedroom; tap a cover, the record plays.
+covers. A grid of cover art on a screen in the child's bedroom; tap a cover to pull the sleeve
+out, tap a number to play it (§4.2 — reversed 2026-09-20; a cover tap used to start the record).
 No text to read, no search, no menus, no settings, no way out.
 
 **Primary user:** one child, age 4, pre-reader, Norwegian-speaking.
@@ -312,6 +313,11 @@ The track list, rendered as a number line — the best-evidenced pedagogic featu
 - **True track numbers, 1…n.** No truncation, no renumbering. Accuracy is what makes it learnable.
 - Track title small and dim to the right — for the parent, ignorable by the child, non-functional.
 - Tapping a row plays from that track. This is *play* aimed at a smaller object, not a new verb.
+- **Tapping a cover opens this view and starts nothing** (reversed 2026-09-20, by the parent,
+  after watching it used). A cover tap used to be *play*, which meant finding out what a record
+  was required stopping whatever was on. Browsing and listening are separate acts now, and the
+  transport below the number line — back, play, pause, forward, four buttons each with one
+  meaning that never changes — is what starts a record.
 - Playing row marked by a **solid block of colour**. Not a pulse, not a glow, not an animation.
 - **No dots or pips** beside numerals: mean subitizing range at 42–57 months is 2.8. The row's
   position in the column already *is* the magnitude cue.

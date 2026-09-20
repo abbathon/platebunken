@@ -72,9 +72,21 @@ by an algorithm. Discovery is real, and the fence is a person.
 
 ## Capabilities and Constraints
 
-**The child's verbs, complete:** browse, play/pause, volume, skip forward, and switch theme. Plus
-shuffle and repeat as toggles on the now-playing view only. Nothing else is reachable by him — no
-delete, no queue editing, no search, no track-back.
+**The child's verbs, complete:** browse, open a sleeve, play, pause, volume, skip forward, skip
+back, and switch theme. Plus shuffle and repeat as toggles on the album view only. Nothing else is
+reachable by him — no delete, no queue editing, no search.
+
+**Reversed 2026-09-20, by the parent, after watching it used.** Three of those are new and one is
+gone:
+
+- *Opening a sleeve is its own verb.* Tapping a cover used to start the record. It now opens the
+  number line and starts nothing, so he can look through the crate while something is playing
+  instead of interrupting it to find out what a record is.
+- *Play and pause are two buttons, not one that changes.* At four he is learning the shape, not
+  reading the state, and a symbol that swaps under his finger is two controls sharing a place.
+- *Skip back exists.* It was excluded on the reasoning that a record is a thing you let run. What
+  that missed is that a missed tap on the number line is a wrong track, and without a way back the
+  only repair is to start the record again.
 
 **Settings exist on the device, behind a gate he cannot pass.** The parent asked for them there,
 and they are the parent's surface rather than a fifth verb: a keypad stands in front of them, and
