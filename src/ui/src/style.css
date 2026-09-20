@@ -187,21 +187,20 @@ html, body {
 }
 
 /**
- * The crate reserves the now-playing panel's column, whether or not anything is playing.
+ * The crate is NOT given a gutter, and that is a reversal.
  *
- * Conditioning this on playback would move every cover the moment music started — the exact
- * thing principle 2 forbids, and the one the whole append-only crate exists to protect. So the
- * column is always there and is sometimes empty.
- *
- * 16px gutter + the panel + 18px before the covers. The panel is wide enough for four 76px
- * targets in a row, because the floor is not negotiable and the transport reads left-to-right
- * in the same order here as on the album view.
+ * A previous pass reserved a column for the now-playing panel and pushed the grid off-centre to
+ * clear it. The grid is the product — browsing is the feature, playback is the reward — so it
+ * sits in the middle of the screen and the panel is fitted around it, in the left column under
+ * the volume. The panel is small enough that a centred grid never reaches it; that is checked
+ * by measurement at 1366 and 1280, not by eye.
  */
 :root {
-  --nowbar-w: calc(4 * var(--target));          /* four 76px targets in a row */
-  --nowbar-x: calc(16px + var(--target) + 14px); /* clear of the left rail */
+  --nowbar-cover: 120px;
+  /* Two 76px targets wide: four controls in a 2x2 block. A row of four is 304px, which a
+     centred grid does reach at 1280. */
+  --nowbar-w: calc(2 * var(--target) + var(--nowbar-cover) + 32px);
 }
-.stage--crate { padding-left: calc(var(--nowbar-x) + var(--nowbar-w) + 18px); }
 
 /* ── A · Vegg ─────────────────────────────────────────────────── */
 .wall { grid-template-rows: 1fr; position: relative; align-content: center; }
@@ -322,9 +321,12 @@ html, body {
 
 /* Vertical, under the theme discs, on every screen. Louder is up — the one mapping he can
    already be assumed to hold. */
-.vol { display: flex; flex-direction: column; gap: 10px; align-items: center; margin-top: 22px; }
-.vol__blocks { display: flex; flex-direction: column-reverse; gap: 6px; }
-.vol__b { width: 46px; height: 13px; border-radius: 3px; background: color-mix(in oklab, var(--bg-raised) 78%, var(--edge)); }
+/* Shortened to free the column below for the now-playing panel. The two BUTTONS keep the 76px
+   floor untouched — only the blocks shrink, and they are an indicator rather than a control:
+   nothing is aimed at them. Buys back ~60px of rail. */
+.vol { display: flex; flex-direction: column; gap: 8px; align-items: center; margin-top: 10px; }
+.vol__blocks { display: flex; flex-direction: column-reverse; gap: 4px; }
+.vol__b { width: 42px; height: 8px; border-radius: 2px; background: color-mix(in oklab, var(--bg-raised) 78%, var(--edge)); }
 .vol__b[data-on="1"] { background: var(--glow); }
 
 /* ── the rails ────────────────────────────────────────────────────
@@ -797,31 +799,40 @@ html, body {
    nothing he has memorised ever moves. An empty corner is the price of that, and it is cheap. */
 .nowbar {
   position: fixed; z-index: 45;
-  /* To the RIGHT of the left rail, never on top of it: the rail carries volume, which is one
-     of the four verbs. The panel covered it at `left: 16px`. */
-  left: var(--nowbar-x); bottom: 18px;
+  /* Bottom of the left column, under the volume. */
+  left: 16px; bottom: 18px;
   width: var(--nowbar-w);
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
-  padding: 12px 10px 10px;
-  border-radius: 18px;
+  display: grid; grid-template-columns: var(--nowbar-cover) auto;
+  grid-template-areas: "art ctl" "out out";
+  align-items: center; gap: 8px;
+  padding: 8px;
+  border-radius: 16px;
   background: color-mix(in oklab, var(--bg-raised) 88%, var(--bg));
   border: 1px solid var(--edge);
   box-shadow: 0 12px 32px -14px rgb(0 0 0 / 0.6);
 }
 .nowbar__art {
-  width: 100%; aspect-ratio: 1; flex: none;
+  grid-area: art;
+  width: var(--nowbar-cover); aspect-ratio: 1; flex: none;
   padding: 0; border: 0; background: none; cursor: default;
   border-radius: 10px; overflow: hidden;
 }
 .nowbar__art .cover { display: block; width: 100%; height: 100%; }
 .nowbar__art img, .nowbar__art svg { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-.nowbar__ctl { display: flex; align-items: center; justify-content: center; gap: 0; }
+/* 2x2 rather than a row of four: a row is 304px wide and a centred grid reaches it at 1280.
+   Reading order is preserved — back, play on the top line; pause, forward on the second. */
+.nowbar__ctl {
+  grid-area: ctl;
+  display: grid; grid-template-columns: repeat(2, var(--target)); gap: 0;
+  justify-content: center;
+}
 
 /* The output device, for the parent. The child cannot read it and never needs to; it answers
    "why can I not hear anything" without opening the screen behind the keypad. */
 .nowbar__out {
-  display: flex; align-items: center; gap: 6px;
+  grid-area: out;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   margin: 0; max-width: 100%;
   font-size: 12px; color: var(--ink-dim);
 }
