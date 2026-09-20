@@ -34,6 +34,8 @@ squeezelite_player_name: platebunken-kiosk
 # The launcher derives kiosk_origin and kiosk_health_url from this and will not open Chromium
 # until /healthz answers — otherwise a laptop that boots before the server shows the child
 # Chromium's own English error page.
+# The port here is the HOST port from the server's .env (PLATEBUNKEN_PORT), not the
+# container's 8080 — they are only the same when nothing else on that host wanted 8080.
 kiosk_url: "http://10.0.0.0:8080/"
 
 # Let Chromium treat that plain-http origin as secure, so a service worker and a persistent

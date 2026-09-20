@@ -41,8 +41,14 @@ services:
     # nothing reads. Music Assistant itself needs `network_mode: host` because Sonos does —
     # that is the obvious thing to copy and it is wrong here, since it would hand a small Node
     # process the whole host's network namespace for no gain at all.
+    #
+    # The CONTAINER port is fixed at 8080; the HOST port is a fact about the host, not about
+    # this product, so it comes from .env. That distinction is not pedantry: 8080 on the first
+    # machine this was deployed to was already held by another service, and hard-coding it here
+    # would have made one host's accident every host's default. The healthcheck and the page
+    # are unaffected — they only ever see the container side.
     ports:
-      - "8080:8080"
+      - "${PLATEBUNKEN_PORT:-8080}:8080"
 
     # Every secret arrives here, at run time. Never an `ENV` in the Dockerfile, never a COPY
     # of .env into a layer. The image must stay publishable without redacting anything.

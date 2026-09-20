@@ -135,7 +135,10 @@ command that destroys the product — say that in the README rather than assumin
 it. The volume is backed up on the Docker host's own schedule; nothing bespoke.
 
 **Bridge networking, not host.** The server dials *out* to MA's WebSocket and to the MQTT broker,
-and is dialled *in* on exactly one port. Nothing in it needs mDNS or SSDP. Music Assistant needs
+and is dialled *in* on exactly one port — 8080 inside the container, and whatever `PLATEBUNKEN_PORT`
+says on the host. Those are deliberately not the same knob: which ports are free is a property of
+a machine, and the first host this was deployed to already had 8080 taken by something unrelated.
+Hard-coding the published port would have made one host's accident every host's default. Nothing in it needs mDNS or SSDP. Music Assistant needs
 `network_mode: host` because Sonos discovery does — **do not copy that here**; it is the obvious
 cargo-cult and it hands a small Node process the whole host's network namespace for no gain.
 

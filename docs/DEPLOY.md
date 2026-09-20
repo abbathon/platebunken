@@ -68,6 +68,18 @@ Only two are needed. The image carries the application.
 default are `MA_HOST`, `MA_TOKEN`, `PLAYER_ID_PRIMARY`, `SEED_PLAYLIST_ID`, and — if
 scrobbling is wanted — `LISTENBRAINZ_TOKEN`.
 
+**Check the host port is free before you start anything:**
+
+```
+curl -sS -o /dev/null -w '%{http_code}\n' http://HOST:8080/
+```
+
+An empty answer is what you want. Anything else means something already holds 8080, and
+`up -d` will fail with *port is already allocated* — that is not hypothetical, it is what the
+first host this was deployed to did. Set `PLATEBUNKEN_PORT` to a free port; the container
+always listens on 8080 internally, so only the host side moves, and the reverse proxy, the DNS
+record and `kiosk_url` must all use the same number.
+
 **`VOLUME_CEILING` is a hearing-safety limit**, not a preference. PRODUCT.md requires it to
 come from an SPL measurement at the child's pillow rather than from the default.
 
@@ -136,7 +148,7 @@ Every line there is something that has cost time when it was wrong.
 Verify:
 
 ```
-curl -fsS http://localhost:8080/healthz          # {"ok":true,"canPlay":true}
+curl -fsS http://localhost:${PLATEBUNKEN_PORT:-8080}/healthz     # {"ok":true,"canPlay":true}
 ```
 
 `/healthz` asks the application, not the port: a container whose socket is open but whose
