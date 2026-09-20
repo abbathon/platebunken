@@ -41,7 +41,7 @@ import { backupTo, openStore } from "./store/db.ts";
 import { counts, crate } from "./store/crate.ts";
 import { seedCrate, type SeedSource } from "./store/seed.ts";
 import { curate } from "./curate/worker.ts";
-import { config, canPlay } from "./server/config.ts";
+import { config, maConfigured } from "./server/config.ts";
 import { load as loadSettings } from "./server/settings.ts";
 
 const USAGE = `platebunken maintenance
@@ -232,7 +232,7 @@ switch (verb) {
   case "help":
   case undefined:
     console.log(USAGE);
-    if (!canPlay()) console.log("note: MA_HOST, MA_TOKEN or PLAYER_ID_PRIMARY is unset — curate and seed need the first two.\n");
+    if (!maConfigured()) console.log("note: MA_HOST or MA_TOKEN is unset — curate and seed both need them.\n");
     break;
   default:
     die(`unknown command: ${verb}\n\n${USAGE}`);

@@ -12,7 +12,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DatabaseSync } from "node:sqlite";
 import { Readable } from "node:stream";
 import { hostname, networkInterfaces } from "node:os";
-import { config, canPlay } from "./config.ts";
+import { config, maConfigured } from "./config.ts";
 import { body, json, routeOf } from "./http.ts";
 import { staticServer } from "./static.ts";
 import { wireCrate } from "./crate.ts";
@@ -84,7 +84,7 @@ export function createApp(db: DatabaseSync) {
        */
       if (route === "/healthz") {
         db.prepare("SELECT 1").get();
-        return json(res, 200, { ok: true, canPlay: canPlay() });
+        return json(res, 200, { ok: true, canPlay: speaker.canPlay() });
       }
 
       /* ── the crate ───────────────────────────────────────────────────── */
@@ -187,7 +187,7 @@ export function createApp(db: DatabaseSync) {
       /* ── the speaker ─────────────────────────────────────────────────── */
       if (route === "/api/speaker/config" && method === "GET") {
         return json(res, 200, {
-          configured: canPlay(),
+          configured: speaker.canPlay(),
           ceiling: config.volume.ceiling,
           start: config.volume.start,
         });
@@ -212,9 +212,38 @@ export function createApp(db: DatabaseSync) {
         }
       }
 
+      /**
+       * Choosing the output, deliberately OUTSIDE the gate below.
+       *
+       * This was inside it, and that was a deadlock: the gate refuses when no player is
+       * selected, and this is the only route that can select one. A deployment with an empty
+       * `PLAYER_ID_PRIMARY` — the correct state until the volume ceiling is measured — could
+       * therefore never be given a speaker at all. The settings screen showed the list,
+       * the tap appeared to work because the page updates itself optimistically, the server
+       * answered 503, and the choice was gone on the next load.
+       *
+       * It needs MA reachable, not a player already chosen. `setTarget` validates the id
+       * against MA's own player list, so this cannot store a speaker that does not exist.
+       */
+      if (route === "/api/speaker/target" && method === "POST") {
+        if (!maConfigured()) {
+          return json(res, 503, { error: "MA_HOST or MA_TOKEN is not configured" });
+        }
+        const payload = await body(req);
+        const id = String(payload.playerId ?? "");
+        try {
+          if (!(await speaker.setTarget(id))) return json(res, 400, { error: "unknown player" });
+        } catch (e) {
+          return maFailed(res, route, e);
+        }
+        // Persist it, so the choice survives the next redeploy.
+        save(db, { playerId: id });
+        return json(res, 200, { ok: true, id });
+      }
+
       if (route.startsWith("/api/speaker/") && method === "POST") {
-        if (!canPlay()) {
-          return json(res, 503, { error: "no player, MA host or MA token configured" });
+        if (!speaker.canPlay()) {
+          return json(res, 503, { error: "no player selected, or MA host/token not configured" });
         }
         const payload = await body(req);
         try {
@@ -244,13 +273,6 @@ export function createApp(db: DatabaseSync) {
             case "/api/speaker/next":
               await speaker.next();
               return json(res, 200, { ok: true });
-            case "/api/speaker/target": {
-              const id = String(payload.playerId ?? "");
-              if (!(await speaker.setTarget(id))) return json(res, 400, { error: "unknown player" });
-              // Persist it, so the choice survives the next redeploy.
-              save(db, { playerId: id });
-              return json(res, 200, { ok: true, id });
-            }
           }
         } catch (e) {
           return maFailed(res, route, e);

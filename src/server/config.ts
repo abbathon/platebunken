@@ -136,8 +136,11 @@ export const config = {
 } as const;
 
 /**
- * Whether this process can actually play anything. False leaves the crate silent rather than
- * half-wired: the page renders, the covers are there, and Enter does nothing audible. That is
- * a deliberately better failure than a crate that looks broken.
+ * Whether Music Assistant is configured at all: a host and a credential.
+ *
+ * Deliberately says NOTHING about which speaker to use. `PLAYER_ID_PRIMARY` is only the
+ * *default* output — the parent can choose another at runtime and that choice is stored — so
+ * folding it in here made the env var the sole authority over something it does not own. See
+ * `canPlay()` in speaker.ts, which asks about the player that is actually selected.
  */
-export const canPlay = (): boolean => Boolean(config.ma.host && config.ma.token && config.playerId);
+export const maConfigured = (): boolean => Boolean(config.ma.host && config.ma.token);

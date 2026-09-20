@@ -20,9 +20,9 @@ import { CHECK_INTERVAL_MS, runTrickle } from "./trickle.ts";
 import { CURATE_HOUR, runCuration } from "./curation.ts";
 import { BACKUP_HOUR, existingBackups, backupDir, runBackup } from "./backup.ts";
 import { enabledSources } from "../curate/worker.ts";
-import { config, canPlay } from "./config.ts";
+import { config } from "./config.ts";
 import { createApp } from "./app.ts";
-import { closeMa, ma, restoreTarget } from "./speaker.ts";
+import { canPlay, closeMa, ma, restoreTarget, target } from "./speaker.ts";
 import { load as loadSettings } from "./settings.ts";
 
 const db = openStore(config.databasePath);
@@ -78,9 +78,17 @@ function announce(): void {
     (kept.length ? `; newest ${kept[kept.length - 1]}, ${kept.length} on disk` : `; none yet`),
   );
   if (canPlay()) {
-    console.log(`  speaker  ${config.playerId} via ${config.ma.baseUrl}, ceiling ${config.volume.ceiling}/100`);
+    // `target()`, not config.playerId: the parent's stored choice is the speaker that will
+    // actually be used, and printing the env var here made the boot log disagree with the
+    // settings screen — on a deployment where the env var is empty by design, it printed
+    // nothing at all and looked like a missing value.
+    console.log(`  speaker  ${target()} via ${config.ma.baseUrl}, ceiling ${config.volume.ceiling}/100`);
+  } else if (!config.ma.host || !config.ma.token) {
+    console.warn(`  ! no MA_HOST or MA_TOKEN: the crate will run SILENT.`);
   } else {
-    console.warn(`  ! no MA_HOST, MA_TOKEN or PLAYER_ID_PRIMARY: the crate will run SILENT.`);
+    // The common and correct state on a fresh deployment, so it must not read as a fault.
+    console.warn(`  ! no speaker chosen yet: the crate will run SILENT until one is picked at`);
+    console.warn(`    /admin → Høyttaler. PLAYER_ID_PRIMARY sets the default; it may stay empty.`);
   }
   if (!process.env.VOLUME_CEILING) {
     console.warn(`  ! VOLUME_CEILING is not set; defaulting to ${config.volume.ceiling}. It is a hearing-safety`);

@@ -87,6 +87,9 @@ const STRINGS: Dict = {
   speakerNone:  ["Fant ingen spillere. Music Assistant svarer ikke.",
                  "No players found. Music Assistant is not answering."],
   speakerWait:  ["Henter spillere …", "Fetching players …"],
+  speakerOn:    ["Aktiv nå", "Active now"],
+  speakerPick:  ["Ingen høyttaler er valgt ennå — trykk på en for å velge. Uten den er krata stum.",
+                 "No speaker is selected yet — tap one to choose. Without it the crate is silent."],
   laptopMissing:["Laptopen dukker ikke opp før squeezelite kjører OG slimproto er slått på i Music Assistant.",
                  "The laptop will not appear until squeezelite is running AND slimproto is enabled in Music Assistant."],
   devIp:        ["IP-adresse", "IP address"],
@@ -270,10 +273,25 @@ function playerPicker(ctx: AdminContext): HTMLElement {
     wrap.append(el(`<p class="set__help">${esc(t("speakerNone", lang))}</p>`));
     return wrap;
   }
+  /**
+   * Say when nothing is chosen, rather than showing a list with nothing marked.
+   *
+   * An unmarked list is indistinguishable from a list whose marker is too subtle to see, and
+   * the first person to use this could not tell which speaker was active. It is also the
+   * state a fresh deployment starts in — `PLAYER_ID_PRIMARY` is deliberately empty until the
+   * volume ceiling is measured — so it is the FIRST thing a parent meets, not an edge case.
+   */
+  if (!ctx.players.some((p) => p.current)) {
+    wrap.append(el(`<p class="set__help set__help--warn">${esc(t("speakerPick", lang))}</p>`));
+  }
+
   for (const p of ctx.players) {
     const b = el(`<button class="player" aria-pressed="${p.current}">
-      <span class="player__name">${esc(p.name)}</span>
-      <span class="player__meta">${esc(p.provider)}${p.model ? ` · ${esc(p.model)}` : ""}</span>
+      <span class="player__text">
+        <span class="player__name">${esc(p.name)}</span>
+        <span class="player__meta">${esc(p.provider)}${p.model ? ` · ${esc(p.model)}` : ""}</span>
+      </span>
+      <span class="player__now">${esc(t("speakerOn", lang))}</span>
     </button>`);
     if (p.current) {
       b.dataset.on = "1";

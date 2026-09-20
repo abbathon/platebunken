@@ -16,7 +16,7 @@
 import { MassClient } from "../ma/client.ts";
 import { createListenTracker, type Listen, type ListenTracker, type NowPlaying } from "../ma/listens.ts";
 import { createScrobbler } from "./scrobble.ts";
-import { config, canPlay } from "./config.ts";
+import { config, maConfigured } from "./config.ts";
 
 let client: MassClient | null = null;
 let connecting: Promise<MassClient> | null = null;
@@ -225,4 +225,23 @@ export async function setVolume(step: unknown, steps: unknown): Promise<number |
 export const playPause = async () => { await (await ma()).playPause(target()); };
 export const next = async () => { await (await ma()).next(target()); };
 
-export { canPlay };
+/**
+ * Whether this process can actually play anything right now.
+ *
+ * **Asks `target()`, not `config.playerId`,** and that distinction was a real bug: a
+ * deployment with an empty `PLAYER_ID_PRIMARY` — which is the correct state until the volume
+ * ceiling comes from an SPL measurement at the pillow — reported `canPlay:false` forever, no
+ * matter which speaker the parent picked. The choice was stored, restored at boot and shown
+ * in the settings screen, and the one function deciding whether to allow audio never looked
+ * at it.
+ *
+ * False leaves the crate silent rather than half-wired: the page renders, the covers are
+ * there, and Enter does nothing audible. That is a deliberately better failure than a crate
+ * that looks broken.
+ *
+ * The decision is split out as `playable` so it can be tested across all four combinations
+ * without an environment to juggle — the same reason `levelFor` and `trickleDue` are pure.
+ */
+export const playable = (maReady: boolean, player: string): boolean => maReady && Boolean(player);
+
+export const canPlay = (): boolean => playable(maConfigured(), target());

@@ -567,11 +567,16 @@ html, body {
    drawn below the 76px floor — §4.6's reasoning: the floor exists so the child can hit
    what he needs, and nothing here is his. */
 .players { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; min-width: 320px; }
+.set__help--warn { color: var(--accent); font-weight: 600; }
 .player {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  /* A row, so the "active now" badge sits beside the name rather than under it. */
+  display: flex; flex-direction: row; align-items: center; gap: 10px;
   padding: 10px 14px; border-radius: 10px; cursor: default; text-align: left;
   background: var(--surface, #1a1a1a); color: inherit;
   border: 2px solid transparent; font: inherit;
+}
+.player__text {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0;
 }
 .player:hover { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
 /* Strong enough to find at a glance in a list of sixteen. A 14% wash was not: the parent
@@ -580,9 +585,26 @@ html, body {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 26%, transparent);
 }
-.player[data-on="1"] .player__name::after {
-  content: "●"; margin-left: 8px; color: var(--accent); font-size: 11px; vertical-align: middle;
+/**
+ * The active speaker says so in words.
+ *
+ * This was a bare dot after the name, which is indistinguishable from a subtle theme, a
+ * rendering quirk, or nothing at all — and the first person to use the settings screen could
+ * not tell which speaker was active. A label cannot be mistaken for decoration.
+ */
+.player__now {
+  display: none;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: var(--accent);
 }
+.player[data-on="1"] .player__now { display: inline-block; }
 .player[data-on="1"] .player__meta { opacity: .8; }
 .player__name { font-size: 16px; font-weight: 600; }
 .player__meta { font-size: 12px; opacity: .55; }
