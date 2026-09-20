@@ -806,10 +806,18 @@ function nowBar(): HTMLElement {
     return b;
   };
 
+  /**
+   * Row order is the grouping, not the reading order of the album view's transport.
+   *
+   * Play and pause are one pair — sound on, sound off — and back and forward are another. Laid
+   * out row-major as back/play then pause/forward, the 2x2 split both pairs across two lines and
+   * put the two halves of the same decision diagonally apart. Pairs stay on their own line: the
+   * thing he presses most on top, the two that move within a record beneath.
+   */
   ctl.append(
-    btn("", "Forrige spor", ICON.prev, Boolean(now), prevTrack),
     btn("btn--play", "Spill", ICON.play, Boolean(now) && !state.playing, () => togglePlay()),
     btn("", "Pause", ICON.pause, state.playing, () => togglePlay()),
+    btn("", "Forrige spor", ICON.prev, Boolean(now), prevTrack),
     btn("", "Neste spor", ICON.next, Boolean(now), () => { if (now) skipTrack(now.album, now.track); }),
   );
   return bar;
