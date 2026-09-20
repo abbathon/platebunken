@@ -13,6 +13,7 @@
  * is built, by Vite, because a browser cannot do the same.)
  */
 import { createServer } from "node:http";
+import { lookup } from "node:dns/promises";
 import { openStore } from "../store/db.ts";
 import { ensureProfile, counts } from "../store/crate.ts";
 import { CHECK_INTERVAL_MS, runTrickle } from "./trickle.ts";
@@ -143,8 +144,45 @@ function backup(): void {
   runBackup(db, { databasePath: config.databasePath, keep: config.backupKeep });
 }
 
+/**
+ * Can this container actually resolve the Music Assistant host?
+ *
+ * A name that resolves on the machine the `.env` was written on and not inside the container
+ * is a deployment that boots clean, serves the crate, and fails one job a day forever. That is
+ * exactly what happened on the first real deployment: `MA_HOST` was copied from a developer's
+ * `.env` as `homeassistant.local`, which is mDNS. A bridge-networked container has no mDNS
+ * resolver — `nsswitch.conf` is `files myhostname dns` — so every curation run failed with
+ * ENOTFOUND, the review queue would have drained as the parent approved, and nothing would
+ * have refilled it. The symptom arrives weeks later and points nowhere near the cause.
+ *
+ * So resolve it once, at boot, where an operator is already reading. Asynchronous and never
+ * fatal: a DNS server that is slow to answer must not delay the child's crate, and a name that
+ * cannot be resolved right now is a warning, not a reason to refuse to serve music that is
+ * already in the store.
+ */
+async function checkMaReachable(): Promise<void> {
+  const host = config.ma.host;
+  if (!host) return;                                   // already warned about by announce()
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return;      // a literal address resolves itself
+  try {
+    await lookup(host);
+    if (host.endsWith(".local")) {
+      console.warn(`  ! MA_HOST "${host}" is an mDNS name. It resolves here now, but mDNS is not`);
+      console.warn(`    guaranteed in a container — prefer an IP address or a real DNS record.`);
+    }
+  } catch {
+    console.warn(`  ! MA_HOST "${host}" does not resolve from inside this container.`);
+    if (host.endsWith(".local")) {
+      console.warn(`    ".local" is mDNS, and a bridge-networked container has no mDNS resolver.`);
+    }
+    console.warn(`    Curation will fail every day and the review queue will never refill.`);
+    console.warn(`    Use an IP address, or a name this container's DNS can answer for.`);
+  }
+}
+
 server.listen(config.port, config.host, () => {
   announce();
+  void checkMaReachable();
   trickle();
   curation();
   backup();

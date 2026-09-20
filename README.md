@@ -56,6 +56,7 @@ Then start it:
 docker compose pull && docker compose up -d
 docker compose logs -f
 curl -fsS http://localhost:8080/healthz    # {"ok":true,"canPlay":true}
+# canPlay:false just means no player is configured yet — the crate renders, silently.
 ```
 
 The boot log states the store path, how many albums are in the crate, how many are waiting to

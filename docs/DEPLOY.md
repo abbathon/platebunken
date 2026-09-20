@@ -149,11 +149,17 @@ Every line there is something that has cost time when it was wrong.
 Verify:
 
 ```
-curl -fsS http://localhost:${PLATEBUNKEN_PORT:-8080}/healthz     # {"ok":true,"canPlay":true}
+curl -fsS http://localhost:${PLATEBUNKEN_PORT:-8080}/healthz     # {"ok":true,...}
 ```
 
 `/healthz` asks the application, not the port: a container whose socket is open but whose
 store will not open must not report healthy.
+
+**`canPlay:false` is not a failure.** It means no player is configured — `PLAYER_ID_PRIMARY`
+is empty — and the crate renders and stays silent, which is the correct state for a deployment
+whose `VOLUME_CEILING` has not yet come from an SPL measurement at the pillow. `ok:true` is the
+part that says the deployment works. Expect `false` until a player is deliberately chosen, and
+do not go hunting for a fault that is a decision.
 
 ## 5. Rolling forward and back
 
