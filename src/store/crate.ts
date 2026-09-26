@@ -149,15 +149,23 @@ export function addFlag(db: DatabaseSync, uri: string, kind: string, source: str
   ).run(uri, kind, detail, source);
 }
 
-/** What the parent sees on their phone. Flagged albums first — sorted, never filtered. */
-export function reviewQueue(db: DatabaseSync, limit = 50): QueueEntry[] {
+/**
+ * What the parent sees on their phone. Flagged albums first — sorted, never filtered.
+ *
+ * No LIMIT. This used to cap at 50 and sort oldest-first, which was fine while the queue
+ * stayed near-empty — but once the backlog passed 50, that combination made anything newer
+ * silently unreachable: a fresh suggestion, or a parent's own manual request, sorted to the
+ * bottom of a list that was already too long to scroll to the end of. Found live: the queue
+ * had grown to 142 undecided candidates and the newest one visible on the page was five days
+ * old. A long page on a bad week is the honest cost; a candidate nobody can ever see is not.
+ */
+export function reviewQueue(db: DatabaseSync): QueueEntry[] {
   const rows = db.prepare(
     `SELECT c.source, c.source_detail, c.suggested_at, a.*
        FROM candidate c JOIN album a ON a.uri = c.uri
       WHERE c.decision IS NULL
-      ORDER BY (SELECT COUNT(*) FROM flag f WHERE f.uri = c.uri) DESC, c.suggested_at ASC
-      LIMIT ?`,
-  ).all(limit) as Record<string, unknown>[];
+      ORDER BY (SELECT COUNT(*) FROM flag f WHERE f.uri = c.uri) DESC, c.suggested_at ASC`,
+  ).all() as Record<string, unknown>[];
   const flags = db.prepare(`SELECT kind, detail, source FROM flag WHERE uri = ?`);
   return rows.map((r) => ({
     album: toAlbum(r),

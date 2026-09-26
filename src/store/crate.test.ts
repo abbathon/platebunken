@@ -185,6 +185,17 @@ test("flags sort the queue and never filter it", () => {
   assert.equal(q[0]!.flags[0]!.kind, "nsbm");
 });
 
+test("the queue does not cap at 50 and lose a fresh suggestion under the backlog", () => {
+  // Found live: 142 undecided candidates, sorted oldest-first, capped at 50 — the newest
+  // suggestion (five days old at the time) never rendered on /admin at all. There is no cap
+  // any more; assert there never is one again.
+  const db = store();
+  for (let n = 1; n <= 60; n++) { upsertAlbum(db, album(n)); suggest(db, album(n).uri, "similar", "test"); }
+
+  const q = reviewQueue(db);
+  assert.equal(q.length, 60, "every undecided candidate is reachable, not just the first 50");
+});
+
 test("rejection closes the queue entry and keeps the album out of the crate", () => {
   const db = store();
   const a = album(1);
