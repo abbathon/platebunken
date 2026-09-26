@@ -338,16 +338,29 @@ The track list, rendered as a number line — the best-evidenced pedagogic featu
   like a failure, and he has no way to tell the two apart. He lands where choosing happens,
   and the selection is the only record he has of what he just heard. On the kiosk the trigger
   is Music Assistant reporting an empty queue; the behaviour is the same function.
-- **The host owns blanking, not the app.** The display is always on, blanks after a period, then
-  powers down — `xset s blank` + `xset dpms` on the Debian kiosk. The app implements no idle
-  timer, no dim, no screensaver, no clock and no visualiser.
-- Music keeps playing while the screen is off, because playback lives in Music Assistant and not
-  in the page. The browser therefore holds no wake lock and never fights the host's blanking —
-  a free consequence of §3's decision to keep the laptop a stateless UI.
-- **Do not install a screensaver program, and never a locking one.** X's own blanking hands the
-  waking keypress on to the page, so the first press both lights the screen and does what he
-  meant; a screensaver or lock swallows it, and a press that does nothing is exactly the
-  disappointment principle 1 is about. UNVERIFIED on this hardware — confirm during kiosk setup.
+- **The host owns idle behaviour, not the app.** The app implements no idle timer, no dim, no
+  clock and no visualiser — none of that changed with what follows.
+- Music keeps playing while the screen is dark, because playback lives in Music Assistant (or
+  squeezelite, for the laptop-jack path) and not in the page. The browser therefore holds no
+  wake lock and never fights the host's screen state — a free consequence of §3's decision to
+  keep the laptop a stateless UI. It does **not** keep playing through a suspend, which is
+  exactly why suspend, below, checks first.
+- **A locking screensaver is still forbidden. A non-locking one no longer is.** The original
+  rule here was "no screensaver program at all": most screensaver hosts swallow the keypress
+  that wakes them, so the child's first press does nothing and he has to press again, which is
+  exactly the disappointment principle 1 is about. The parent later decided that risk was
+  worth taking for the power and wear saved on hardware left running for hours. xscreensaver
+  now owns the screen at 10 minutes idle (`mode: blank` — never a moving hack), configured
+  with `lock: False` and `lockTimeout: 0` so locking is disabled twice over rather than once;
+  `xfce4-screensaver` and `light-locker`, whose locking has no config knob worth trusting, stay
+  purged. UNVERIFIED on this hardware whether the first wake press is actually swallowed —
+  confirm during kiosk setup, and revert to plain `xset s blank` in `kiosk.sh.j2` if it is.
+- **After 30 minutes idle *and* nothing playing, the laptop suspends.** Squeezelite's own ALSA
+  PCM state (`/proc/asound/*/pcm*p/sub0/status`) is the source of truth for "playing", not
+  Music Assistant's queue state — a false "not playing" here is exactly the state that must
+  never cut a record off mid-track. `platebunken-idle-watch.sh` polls both that and
+  `xprintidle` every 30 seconds and calls `systemctl suspend` only when both agree. Waking is
+  any key; autologin plus no locker means the crate is exactly where he left it.
 
 ### 4.4 Getting home
 

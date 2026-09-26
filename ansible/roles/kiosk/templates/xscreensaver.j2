@@ -1,0 +1,23 @@
+# Managed by Ansible — platebunken/ansible/roles/kiosk. Hand edits will be overwritten.
+#
+# §4.3: the original rule here was "no screensaver program at all" — most screensaver hosts
+# swallow the keypress that wakes them, so the child's first press does nothing and he has to
+# press again, which is exactly the disappointment principle 1 is about. The parent later
+# decided that risk was worth taking for the power and wear saved on hardware left running for
+# hours, on the condition that locking stays forbidden. This file is that condition:
+#
+#   mode: blank      — never a moving hack. No visualiser was the rule before and still is.
+#   lock: False       \  disabled twice over, not once. A locker in front of a four-year-old
+#   lockTimeout: 0:00:00 / who cannot read is a device that has stopped existing (same §4.3).
+#
+# UNVERIFIED on this hardware whether the first wake keypress is actually swallowed — check it
+# during kiosk setup. If it is, drop this file, re-purge the xscreensaver package, and restore
+# `xset s blank` in kiosk.sh.j2.
+timeout:        {{ '%02d:%02d:%02d' % (kiosk_screensaver_seconds // 3600, (kiosk_screensaver_seconds % 3600) // 60, kiosk_screensaver_seconds % 60) }}
+cycle:          {{ '%02d:%02d:%02d' % (kiosk_screensaver_seconds // 3600, (kiosk_screensaver_seconds % 3600) // 60, kiosk_screensaver_seconds % 60) }}
+lock:           False
+lockTimeout:    0:00:00
+passwdTimeout:  0:00:00
+dpmsEnabled:    False
+splash:         False
+mode:           blank

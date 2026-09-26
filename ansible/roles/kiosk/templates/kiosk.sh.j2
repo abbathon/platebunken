@@ -1,13 +1,12 @@
 #!/bin/sh
 # Managed by Ansible — platebunken/ansible/roles/kiosk. Hand edits will be overwritten.
 
-# §4.3: the HOST owns blanking, not the app. The page implements no idle timer, no dim, no
-# screensaver, no clock. X's own blanking hands the waking keypress on to the page, so the
-# first press both lights the screen and does what he meant — a screensaver or a locker
-# swallows it, and a press that does nothing is the disappointment principle 1 is about.
-xset s blank
-xset s {{ kiosk_blank_seconds }}
-xset dpms {{ kiosk_blank_seconds }} {{ kiosk_blank_seconds }} {{ kiosk_dpms_off_seconds }}
+# §4.3: the HOST owns idle behaviour, not the app. The page implements no idle timer, no dim,
+# no clock. Screensaver and suspend now live in xscreensaver and platebunken-idle-watch.sh —
+# not here, and not in xset: two things owning blanking is the one thing §4.3 warned against,
+# so this script owns neither anymore.
+xset s off
+xset -dpms
 
 # §10 says a Chromium crash is "~2 s black, then the crate". Make that literally true: a
 # black root window means the gap shows nothing rather than a desktop he could poke at.

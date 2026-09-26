@@ -1,0 +1,40 @@
+#!/bin/sh
+# Managed by Ansible — platebunken/ansible/roles/kiosk. Hand edits will be overwritten.
+#
+# Suspends the machine after {{ kiosk_suspend_seconds }}s idle — but only when squeezelite's
+# own ALSA state agrees nothing is playing. Music Assistant's idea of "playing" is not asked:
+# a suspend that fires because MA's queue state disagreed with reality would cut a record off
+# mid-track, and that is exactly the failure this check exists to rule out. /proc/asound is the
+# device actually making sound right now, on this machine, regardless of which path (§7.2) MA
+# thinks it is using.
+SUSPEND_AFTER_S={{ kiosk_suspend_seconds }}
+POLL_S=30
+
+is_playing() {
+  for f in /proc/asound/card*/pcm*p/sub0/status; do
+    [ -f "$f" ] || continue
+    if grep -q '^state: RUNNING' "$f" 2>/dev/null; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+while true; do
+  idle_ms=$(xprintidle 2>/dev/null || echo 0)
+  idle_s=$((idle_ms / 1000))
+
+  if [ "$idle_s" -ge "$SUSPEND_AFTER_S" ]; then
+    if is_playing; then
+      echo "kiosk: ${idle_s}s idle but the jack is live — not suspending"
+    else
+      echo "kiosk: suspending after ${idle_s}s idle, nothing playing"
+      systemctl suspend
+      # Give the machine time to actually go down before the next check fires on a system
+      # that is merely slow to suspend rather than one that stayed up.
+      sleep "$POLL_S"
+    fi
+  fi
+
+  sleep "$POLL_S"
+done

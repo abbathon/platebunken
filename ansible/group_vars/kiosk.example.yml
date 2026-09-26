@@ -43,6 +43,8 @@ kiosk_url: "http://10.0.0.0:8080/"
 # serves TLS, and never leave it on for an origin you do not control end to end.
 kiosk_treat_as_secure_origin: true
 
-# ── blanking (§4.3 — the host owns this, never the app) ──────────────
-kiosk_blank_seconds: 300
-kiosk_dpms_off_seconds: 300
+# ── idle behaviour (§4.3 — the host owns this, never the app) ─────────
+# Screensaver (screen only) at 10 minutes idle, real suspend at 30 — and suspend checks
+# squeezelite's ALSA state first, so it never fires mid-record even if this clock says idle.
+kiosk_screensaver_seconds: 600
+kiosk_suspend_seconds: 1800

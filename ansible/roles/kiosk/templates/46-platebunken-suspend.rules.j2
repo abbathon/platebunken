@@ -1,0 +1,11 @@
+// Managed by Ansible — platebunken/ansible/roles/kiosk. Hand edits will be overwritten.
+//
+// platebunken-idle-watch.sh calls `systemctl suspend` as {{ kiosk_user }}, a user with no
+// sudo (§8 — the one door back into this machine over wifi has to stay narrow). Without this,
+// suspend silently no-ops behind a polkit prompt nobody is there to answer, on a machine with
+// no visible desktop to answer it from.
+polkit.addRule(function(action, subject) {
+  if (action.id == "org.freedesktop.login1.suspend" && subject.user == "{{ kiosk_user }}") {
+    return polkit.Result.YES;
+  }
+});

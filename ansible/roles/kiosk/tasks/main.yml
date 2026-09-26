@@ -38,20 +38,66 @@
     group: "{{ kiosk_user }}"
     mode: "0644"
 
-- name: No screensaver, and above all no locker
+- name: The idle-watch script
+  ansible.builtin.template:
+    src: platebunken-idle-watch.sh.j2
+    dest: "{{ kiosk_home }}/.local/bin/platebunken-idle-watch.sh"
+    owner: "{{ kiosk_user }}"
+    group: "{{ kiosk_user }}"
+    mode: "0755"
+
+- name: Autostart the idle watch and the screensaver with the session
+  ansible.builtin.template:
+    src: "{{ item }}.desktop.j2"
+    dest: "{{ kiosk_home }}/.config/autostart/{{ item }}.desktop"
+    owner: "{{ kiosk_user }}"
+    group: "{{ kiosk_user }}"
+    mode: "0644"
+  loop:
+    - platebunken-idle-watch
+    - xscreensaver
+
+- name: xscreensaver's own config
+  ansible.builtin.template:
+    src: xscreensaver.j2
+    dest: "{{ kiosk_home }}/.xscreensaver"
+    owner: "{{ kiosk_user }}"
+    group: "{{ kiosk_user }}"
+    mode: "0644"
+
+- name: Let {{ kiosk_user }} suspend without a polkit prompt nobody is there to answer
+  ansible.builtin.template:
+    src: 46-platebunken-suspend.rules.j2
+    dest: /etc/polkit-1/rules.d/46-platebunken-suspend.rules
+    mode: "0644"
+
+- name: No locking screensaver, ever
   # Same tag as the base role's install: apt needs python3-apt on the target to run under
   # --check, so a dry run can skip both and still exercise everything else.
   tags: [packages]
-  # §4.3 is explicit: never a screensaver program and never a locking one. A locker in front
-  # of a four-year-old who cannot read is a device that has stopped existing. Purged rather
-  # than disabled, so a later desktop update cannot quietly bring one back.
+  # §4.3 still forbids a LOCKING screensaver absolutely: a locker in front of a four-year-old
+  # who cannot read is a device that has stopped existing. Purged rather than disabled, so a
+  # later desktop update cannot quietly bring one back. xscreensaver is no longer in this list
+  # — see below — because its own locking is disabled in config (`lock: False`), not by being
+  # absent from the machine, and that is the weaker guarantee. These two have no such config
+  # knob worth trusting, so absence is still the only guarantee for them.
   ansible.builtin.apt:
     name:
       - xfce4-screensaver
       - light-locker
-      - xscreensaver
     state: absent
     purge: true
+
+- name: xscreensaver, and what it needs to know when to suspend
+  # §4.3: screensaver at kiosk_screensaver_seconds, real suspend at kiosk_suspend_seconds — see
+  # xscreensaver.j2 and platebunken-idle-watch.sh.j2 for why each exists and what stops the
+  # suspend half from ever cutting off a record mid-track.
+  tags: [packages]
+  ansible.builtin.apt:
+    name:
+      - xscreensaver
+      - xprintidle
+    state: present
 
 # XFCE settings are written as xfconf XML rather than driven with `xfconf-query`, which
 # needs a live D-Bus session and therefore cannot work over SSH. These apply at next login.

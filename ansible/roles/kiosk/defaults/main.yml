@@ -1,7 +1,13 @@
 ---
-# Blanking, per §4.3. The host owns this; the app implements no idle timer at all.
-kiosk_blank_seconds: 300
-kiosk_dpms_off_seconds: 300
+# Idle behaviour, per §4.3. The host owns all of this; the app implements no idle timer at all.
+#
+# Two stages, on the same idle clock: xscreensaver (`mode: blank`, never a moving hack, lock
+# disabled twice over) takes the screen at kiosk_screensaver_seconds, and
+# platebunken-idle-watch.sh suspends the machine at kiosk_suspend_seconds — but only if
+# squeezelite's own ALSA state says nothing is actually playing. A record already in progress
+# is never cut off by a clock; only true silence is.
+kiosk_screensaver_seconds: 600
+kiosk_suspend_seconds: 1800
 
 # Disable Ctrl+Alt+F1..F12 (VT switching).
 #
