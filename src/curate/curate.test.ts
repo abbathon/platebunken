@@ -15,7 +15,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { foldName, sameArtist, similarArtists, LABS_ALGORITHM } from "./sources.ts";
 import { themeTokens, hasTheme, parseRosterRow, indexRoster, themeHitsFor, THEME_TERMS } from "./themes.ts";
-import { usableAlbums, interleaveBySeed, enabledSources } from "./worker.ts";
+import { usableAlbums, interleaveBySeed, enabledSources, releaseKey } from "./worker.ts";
 import { SOURCE_AVAILABLE } from "../server/settings.ts";
 import { deezerArtistId, deezerRelated } from "./deezer.ts";
 import type { Album } from "../ma/types.ts";
@@ -64,6 +64,15 @@ test("an album with no artwork is not suggested", () => {
   // catch the ones already in the crate; there is no reason to add more deliberately.
   const out = usableAlbums([album("Dio", "Holy Diver", false), album("Dio", "The Last In Line")], "Dio", 10);
   assert.deepEqual(out.map((a) => a.name), ["The Last In Line"]);
+});
+
+test("a release key does not care which uri a catalogue assigned it", () => {
+  // Found live: a different Qobuz item_id for "Ramones — Ramones" reached the review queue
+  // weeks after the parent had already approved and released a different uri for the same
+  // record. The uris disagree on purpose here; the key must not.
+  assert.equal(releaseKey("Ramones", "Ramones"), releaseKey("The Ramones", "Ramones"));
+  assert.equal(releaseKey("Ozzy Osbourne", "No More Tears"), releaseKey("Ozzy Osbourne", "No More Tears "));
+  assert.notEqual(releaseKey("Ozzy Osbourne", "No More Tears"), releaseKey("Ozzy Osbourne", "Blizzard Of Ozz"));
 });
 
 test("the per-artist limit is honoured", () => {

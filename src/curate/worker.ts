@@ -34,8 +34,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { MassClient } from "../ma/client.ts";
 import type { Album } from "../ma/types.ts";
 import {
-  addFlag, cacheGet, cachePut, cacheStale, crateArtists, fromMassAlbum, knownUris, setTracks, suggest,
-  upsertAlbum,
+  addFlag, cacheGet, cachePut, cacheStale, crateArtists, fromMassAlbum, knownReleases, knownUris, setTracks,
+  suggest, upsertAlbum,
 } from "../store/crate.ts";
 import { foldName, resolveArtistMbid, sameArtist, similarArtists, type Fetcher, type Neighbour } from "./sources.ts";
 import { fetchThemeRoster, indexRoster, themeHitsFor, THEME_TERMS, type ThemeBand } from "./themes.ts";
@@ -100,7 +100,11 @@ export interface CurateReport {
   skippedNoArtwork: number;
   skippedKnown: number;
   skippedWrongArtist: number;
-  /** Re-releases of something already queued this run: remasters, deluxe editions. */
+  /**
+   * Re-releases of something already known — a remaster, a deluxe edition, a territory
+   * variant under a different uri — whether that happened earlier this run or on any run
+   * before it, including one already approved and sitting in the crate.
+   */
   skippedDuplicate: number;
   /**
    * Suggestions whose track list came back with the album, and suggestions it did not.
@@ -169,6 +173,18 @@ export function usableAlbums(results: readonly Album[], artist: string, limit: n
     if (out.length >= limit) break;
   }
   return out;
+}
+
+/**
+ * One release, identified the way a parent recognises it — by who made it and what it is
+ * called — rather than by the uri a catalogue happens to have assigned it today.
+ *
+ * Exported so the cross-run duplicate guard in `curate()` is testable without a network: the
+ * bug it exists to catch (two different Qobuz uris for "Ramones — Ramones", weeks apart) is
+ * exactly a case where the uris disagree and this must not.
+ */
+export function releaseKey(artist: string, title: string): string {
+  return `${foldName(artist)}|${foldName(title)}`;
 }
 
 /** Load every theme roster, from cache when it is fresh enough. */
@@ -251,16 +267,20 @@ export async function curate(
   const themeIndex = await rosters(db, { write, fetchImpl, log });
 
   /**
-   * Releases already queued this run, by folded artist + title.
+   * Releases already known, by folded artist + title — seeded from every album this store
+   * has ever written down, not just this run's.
    *
    * Catalogues carry the same record several times — a remaster, a deluxe edition, a
    * territory variant — under the same name and different uris. A first run offered
    * "Van Halen — Van Halen" and "Ramones — Ramones" twice each, and "Slash — Slash" beside
-   * "Slash — Slash " with a trailing space. Each of those costs the parent a decision on a
-   * record they have already decided about, on a surface whose whole promise is ten seconds
-   * a day.
+   * "Slash — Slash " with a trailing space. That was fixed for a single run, and it was not
+   * enough: "Ramones — Ramones" and "Ozzy Osbourne — No More Tears" both came back under a
+   * NEW uri on a later run, one of them after the parent had already approved and released
+   * the other — `known` (below) only matches an identical uri, so a different Qobuz item_id
+   * for the same record sailed straight past it. Seeding this set from every album ever
+   * written, not just this run's candidates, is what closes that gap.
    */
-  const seenRelease = new Set<string>();
+  const seenRelease = new Set<string>(knownReleases(db).map((r) => releaseKey(r.artist, r.title)));
 
   const seeds = crateArtists(db, opts.profileId);
   report.crateArtists = seeds.length;
@@ -395,10 +415,10 @@ export async function curate(
 
     for (const a of usableAlbums(results, n.name, albumsPerArtist)) {
       if (known.has(a.uri)) { report.skippedKnown++; continue; }
-      const releaseKey = `${foldName(a.artists?.[0]?.name ?? n.name)}|${foldName(a.name)}`;
-      if (seenRelease.has(releaseKey)) { report.skippedDuplicate++; continue; }
+      const key = releaseKey(a.artists?.[0]?.name ?? n.name, a.name);
+      if (seenRelease.has(key)) { report.skippedDuplicate++; continue; }
       if (report.candidates.length >= maxSuggestions) break;
-      seenRelease.add(releaseKey);
+      seenRelease.add(key);
 
       const input = fromMassAlbum(a);
       const hits = themeHitsFor(n.name, themeIndex);

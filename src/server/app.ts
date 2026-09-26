@@ -19,6 +19,7 @@ import { wireCrate } from "./crate.ts";
 import { recordPlay, setManualFavourite } from "../store/crate.ts";
 import { save, wireSettings } from "./settings.ts";
 import { decide, recommend, releaseNow, reopen, wireReview } from "./review.ts";
+import { requestAlbum, searchCatalogue } from "./manualAdd.ts";
 import { adminHtml } from "./admin.ts";
 import { cacheOne } from "./tracks.ts";
 import * as speaker from "./speaker.ts";
@@ -200,6 +201,50 @@ export function createApp(db: DatabaseSync) {
           return json(res, 400, { ok: false, error: "recommended must be a boolean" });
         }
         return json(res, 200, recommend(db, profileId, uri, payload.recommended));
+      }
+
+      /**
+       * The parent asking for one specific album by name, rather than waiting for the seed
+       * playlist or the curation worker to think of it (§5, `manualAdd.ts`). Behind the same
+       * `/api/review/*` prefix as the rest of the queue because it feeds the same gate —
+       * `requestAlbum` only ever calls `suggest()`, never `approve()`.
+       */
+      if (route === "/api/review/search" && method === "GET") {
+        if (!maConfigured()) {
+          return json(res, 503, { error: "MA_HOST or MA_TOKEN is not configured", results: [] });
+        }
+        const q = new URL(req.url ?? "/", "http://localhost").searchParams.get("q") ?? "";
+        try {
+          return json(res, 200, { results: await searchCatalogue(db, await speaker.ma(), q) });
+        } catch (e) {
+          console.error(`[request] search: ${(e as Error).message}`);
+          return json(res, 502, { error: (e as Error).message, results: [] });
+        }
+      }
+
+      if (route === "/api/review/request" && method === "POST") {
+        if (!maConfigured()) {
+          return json(res, 503, { ok: false, error: "MA_HOST or MA_TOKEN is not configured" });
+        }
+        const payload = await body(req);
+        const uri = String(payload.uri ?? "");
+        const provider = String(payload.provider ?? "");
+        const itemId = String(payload.itemId ?? "");
+        const title = String(payload.title ?? "");
+        if (!uri || !provider || !itemId || !title) {
+          return json(res, 400, { ok: false, error: "uri, provider, itemId and title required" });
+        }
+        const year = Number.isFinite(Number(payload.year)) ? Number(payload.year) : null;
+        const explicit = typeof payload.explicit === "boolean" ? payload.explicit : null;
+        const coverProxyId = typeof payload.coverProxyId === "string" ? payload.coverProxyId : null;
+        try {
+          const out = await requestAlbum(db, await speaker.ma(), profileId, {
+            uri, provider, itemId, artist: String(payload.artist ?? ""), title, year, explicit, coverProxyId,
+          });
+          return json(res, 200, out);
+        } catch (e) {
+          return json(res, 502, { ok: false, error: (e as Error).message });
+        }
       }
 
       /* ── settings ─────────────────────────────────────────────────────── */

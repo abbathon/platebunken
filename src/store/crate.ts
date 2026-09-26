@@ -837,3 +837,31 @@ export function knownUris(db: DatabaseSync): Set<string> {
   const rows = db.prepare(`SELECT uri FROM album`).all() as { uri: string }[];
   return new Set(rows.map((r) => r.uri));
 }
+
+/**
+ * Every album ever seen, by artist and title, unfolded.
+ *
+ * `knownUris` only catches a record the worker already wrote down under the SAME uri.
+ * Qobuz hands out a different item_id for what is, to a parent looking at a cover, the exact
+ * same release — a remaster, a reissue, a territory variant — often enough that two
+ * different uris for "Ramones — Ramones" and for "Ozzy Osbourne — No More Tears" both reached
+ * the review queue on different days, one of them weeks after the other had already been
+ * approved and released. `worker.ts` folds these before comparing.
+ */
+export function knownReleases(db: DatabaseSync): { artist: string; title: string }[] {
+  return db.prepare(`SELECT artist, title FROM album`).all() as { artist: string; title: string }[];
+}
+
+/**
+ * Every release actually in this profile's crate right now, by artist and title.
+ *
+ * For a manual request (`server/manualAdd.ts`) to refuse a second uri for something already
+ * on the grid — a position is permanent, so that refusal has to compare the way a parent
+ * would recognise the record, not the uri a catalogue happens to have assigned it today.
+ */
+export function approvedReleases(db: DatabaseSync, profileId: string): { artist: string; title: string }[] {
+  return db.prepare(
+    `SELECT a.artist, a.title FROM approved ap JOIN album a ON a.uri = ap.uri
+      WHERE ap.profile_id = ? AND ap.withdrawn_at IS NULL`,
+  ).all(profileId) as { artist: string; title: string }[];
+}

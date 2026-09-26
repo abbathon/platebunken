@@ -159,6 +159,17 @@ const ADMIN_HTML = `<!doctype html>
   .pad span { display: block; }
   .err { background: #3a2220; border: 1px solid var(--hot); color: #f0c4bc;
          padding: 11px 13px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
+  .search { margin-bottom: 22px; }
+  .searchform { display: flex; gap: 8px; }
+  .searchform input {
+    flex: 1; font: inherit; padding: 11px 13px; border-radius: 10px;
+    border: 1px solid var(--line); background: #171310; color: var(--ink); min-width: 0;
+  }
+  .searchform button { flex: none; padding: 11px 18px; min-height: 0; }
+  .search-results { margin-top: 10px; }
+  .search-empty { color: var(--dim); font-size: 13px; padding: 6px 0 0; }
+  .chip.known { border-color: #55483c; color: #c2ae95; }
+  .row button.added { background: transparent; border-color: transparent; color: var(--dim); }
 </style>
 </head>
 <body>
@@ -172,6 +183,14 @@ const ADMIN_HTML = `<!doctype html>
 <header><h1>Platebunken</h1><span class="count" id="count"></span></header>
 <div id="err"></div>
 <div id="note"></div>
+<section class="search">
+  <h2>Legg til en bestemt plate</h2>
+  <form class="searchform" id="search-form">
+    <input id="search-q" type="search" placeholder="Artist eller plate…" autocomplete="off">
+    <button type="submit" id="search-go">Søk</button>
+  </form>
+  <div class="search-results" id="search-results"></div>
+</section>
 <section id="shelf-wrap" hidden>
   <div class="shelf">
     <h2 id="shelf-title"></h2>
@@ -216,6 +235,10 @@ const ADMIN_HTML = `<!doctype html>
   var heldTitle = document.getElementById("held-title");
   var heldHelp = document.getElementById("held-help");
   var heldline = document.getElementById("heldline");
+  var searchForm = document.getElementById("search-form");
+  var searchQ = document.getElementById("search-q");
+  var searchGo = document.getElementById("search-go");
+  var searchResults = document.getElementById("search-results");
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -327,6 +350,75 @@ const ADMIN_HTML = `<!doctype html>
     row.appendChild(again);
     return row;
   }
+
+  /**
+   * One catalogue hit, offered for the parent to ask for by name (section 5's third way in,
+   * behind /api/review/request). "known" is advisory, drawn from a different uri already
+   * sitting somewhere in this store — never a reason to hide the row, only to say so first.
+   */
+  function searchRow(r) {
+    var row = el("div", "row");
+    row.appendChild(art(r, "art"));
+    var meta = el("div", "meta");
+    meta.appendChild(el("div", "artist", r.artist || "\\u2014"));
+    meta.appendChild(el("div", "title", r.title + (r.year ? " (" + r.year + ")" : "")));
+    if (r.known) meta.appendChild(el("span", "chip known", "kjent fra f\\u00f8r"));
+    row.appendChild(meta);
+
+    var add = el("button", null, "Legg til");
+    add.addEventListener("click", function () {
+      add.disabled = true;
+      fetch("/api/review/request", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          uri: r.uri, provider: r.provider, itemId: r.itemId, artist: r.artist,
+          title: r.title, year: r.year, explicit: r.explicit, coverProxyId: r.coverProxyId
+        })
+      }).then(function (resp) { return resp.json(); }).then(function (out) {
+        if (!out.ok) {
+          showError(out.error || "Kunne ikke legge til.");
+          add.disabled = false;
+          return;
+        }
+        add.className = "added";
+        add.textContent = "Lagt til";
+        showNote(r.artist + " \\u2014 " + r.title + " er lagt i k\\u00f8en.");
+        load();
+      }).catch(function (e) {
+        showError("Ingen kontakt med serveren: " + e.message);
+        add.disabled = false;
+      });
+    });
+    row.appendChild(add);
+    return row;
+  }
+
+  function runSearch(q) {
+    searchResults.textContent = "";
+    if (!q) return;
+    searchGo.disabled = true;
+    fetch("/api/review/search?q=" + encodeURIComponent(q), { headers: { accept: "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (out) {
+        searchGo.disabled = false;
+        if (out.error) { showError(out.error); return; }
+        showError("");
+        if (!out.results || !out.results.length) {
+          searchResults.appendChild(el("p", "search-empty", "Ingen treff."));
+          return;
+        }
+        out.results.forEach(function (r) { searchResults.appendChild(searchRow(r)); });
+      }).catch(function (e) {
+        searchGo.disabled = false;
+        showError("Ingen kontakt med serveren: " + e.message);
+      });
+  }
+
+  searchForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    runSearch(searchQ.value.trim());
+  });
 
   function decide(uri, decision, cardEl, buttons) {
     buttons.forEach(function (b) { b.disabled = true; });
