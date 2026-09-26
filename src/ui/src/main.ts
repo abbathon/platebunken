@@ -23,6 +23,9 @@ const ICON = {
   prev:  `<svg viewBox="0 0 24 24"><path d="M18 5.5v13a1 1 0 0 1-1.53.85L8 13.9V18a1 1 0 0 1-2 0V6a1 1 0 0 1 2 0v4.1l8.47-5.45A1 1 0 0 1 18 5.5Z"/></svg>`,
   left:  `<svg viewBox="0 0 24 24"><path d="M15.2 3.8 7 12l8.2 8.2 1.6-1.6L10.2 12l6.6-6.6z"/></svg>`,
   right: `<svg viewBox="0 0 24 24"><path d="m8.8 3.8 8.2 8.2-8.2 8.2-1.6-1.6L13.8 12 7.2 5.4z"/></svg>`,
+  // A chevron pointing up. The number line's own scroll hint reuses this one path, mirrored
+  // in CSS for "more below" — one shape to learn, not two.
+  chevron: `<svg viewBox="0 0 24 24"><path d="M12 8 5.4 15l1.4 1.4L12 10.8l5.2 5.6L19 15Z"/></svg>`,
   home:  `<svg viewBox="0 0 24 24"><path d="M4 9.5 12 3l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/></svg>`,
   menu:  `<svg viewBox="0 0 24 24"><path d="M4 6h16v2H4zM4 11h16v2H4zM4 16h16v2H4z"/></svg>`,
   // The mark, small. brand/mark.svg is the source; this is its geometry inlined so the page
@@ -703,7 +706,11 @@ function albumView(album: Album, track: number): HTMLElement {
     <div class="np__art"><div class="cover" id="np-art">${art(album, "lg")}</div></div>
     <div class="np__side">
       <h1 class="np__artist">${esc(album.artist.toUpperCase())}</h1>
-      <ol class="tracks" data-marks="${state.settings.favouritesShown ? 1 : 0}"></ol>
+      <div class="tracks-wrap">
+        <div class="tracks__more tracks__more--up" aria-hidden="true">${ICON.chevron}</div>
+        <ol class="tracks" data-marks="${state.settings.favouritesShown ? 1 : 0}"></ol>
+        <div class="tracks__more tracks__more--down" aria-hidden="true">${ICON.chevron}</div>
+      </div>
       <div class="transport"></div>
     </div>
   </section>`);
@@ -757,6 +764,29 @@ function albumView(album: Album, track: number): HTMLElement {
     }
     list.append(row);
   }
+
+  /**
+   * A hint that the list keeps going past the visible rows, up or down.
+   *
+   * Both chevrons keep their space reserved and only ever fade — never `hidden` — for the same
+   * reason `.track__fav`'s column is reserved unconditionally: a control that appears by
+   * changing the layout is a layout that moves under him.
+   *
+   * `list.scrollHeight`/`clientHeight` read as 0/0 on a node that is not yet connected to the
+   * document, and `root` is still detached here — `render()` is what appends it, after this
+   * function returns. `queueMicrotask` runs after that synchronous append, in the same render
+   * pass, so the first measurement is already accurate rather than a guess that self-corrects
+   * on the next scroll.
+   */
+  const up = root.querySelector(".tracks__more--up") as HTMLElement;
+  const down = root.querySelector(".tracks__more--down") as HTMLElement;
+  const updateTrackScrollHints = () => {
+    const overflows = list.scrollHeight > list.clientHeight + 1;
+    up.dataset.show = overflows && list.scrollTop > 0 ? "1" : "0";
+    down.dataset.show = overflows && list.scrollTop < list.scrollHeight - list.clientHeight - 1 ? "1" : "0";
+  };
+  list.addEventListener("scroll", updateTrackScrollHints);
+  queueMicrotask(updateTrackScrollHints);
 
   /**
    * The transport: back, play, pause, forward. Four buttons, each with one meaning that never
