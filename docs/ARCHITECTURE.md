@@ -563,6 +563,25 @@ crate without a person having seen the album first.
   cache; an album that opens onto an empty track list is not that. A re-tag replaces the rows
   wholesale, because freezing the first answer would leave the number line disagreeing with what
   actually plays. Track numbers belong to the record; only **positions** belong to the child.
+
+  **Who fills it, and what happens when it is empty.** For a long time the answer to the first
+  question was "only `pb seed`". The curation worker wrote the album and the candidacy and
+  stopped, so every album the parent approved at /admin reached the crate with no tracks —
+  sixteen seeded albums that worked and eleven approved ones that showed the child an English
+  sentence about Music Assistant. Three things now hold the rule, and all three are needed:
+
+  - `src/curate/worker.ts` caches the list when it suggests the album, and `app.ts` asks again
+    on ✓ — the two moments MA is already connected and a person is present.
+  - `src/server/tracks.ts` sweeps for anything still missing, on the same half-hourly wake-up
+    as the trickle and **before** it. An album MA cannot answer for stays on the list and is
+    asked again: MA syncs, so "no tracks today" is not "no tracks".
+  - `release()` refuses to give a **permanent** position to an album with no cached list, and
+    `wireCrate` draws an already-released one as an **empty slot** — the same thing a withdrawn
+    album becomes, for the same reason. Hiding it must not move anything after it, and it heals
+    itself: the cover appears in the slot it always had the moment the sweep lands.
+
+  The parent is told, at /admin and at boot. A ✓ that produces nothing and says nothing is the
+  same silent failure in a different costume.
 - **`play` is an append-only log, and it is the only source of the *recent* and *most-played*
   shelves.** There is no separate counter: what he played is what he played. A counter cannot
   answer "recent" and cannot be recomputed if the shelf rules change. `recordPlay()` refuses an

@@ -44,8 +44,13 @@ export interface SeedSource {
   /** The seed playlist, in the parent's order, as tracks carrying their albums. */
   playlistTracks(): Promise<Track[]>;
   /**
-   * One album's own track list. May reject: an album whose tracks will not load still belongs
-   * in the crate, because it plays from its own uri and what is missing is the number line.
+   * One album's own track list. May reject.
+   *
+   * A rejection no longer means "seed it anyway without a number line". `release()` refuses
+   * to give a permanent position to an album with no cached tracks, because an album that
+   * opens onto an empty list is a cover the child taps and gets nothing from. The album is
+   * still recorded and still approved — it simply waits, and `src/server/tracks.ts` fills the
+   * list in on the next half-hourly sweep.
    */
   albumTracks(itemId: string, provider: string): Promise<Track[]>;
 }
@@ -190,6 +195,10 @@ export async function seedCrate(
 
   /**
    * The seed does not trickle.
+   *
+   * Albums whose track list did not load are the exception, and not by a rule stated here:
+   * `release()` skips them, so `released` can be smaller than `albums.size` and the report
+   * says so. They come out on the sweep, not on a second seed run.
    *
    * §4.1 releases one album a day so there is nearly always a reason to walk over and look —
    * but that needs an existing crate for the new record to stand out against, and a child

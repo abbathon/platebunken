@@ -20,6 +20,7 @@ import { recordPlay } from "../store/crate.ts";
 import { save, wireSettings } from "./settings.ts";
 import { decide, releaseNow, reopen, wireReview } from "./review.ts";
 import { adminHtml } from "./admin.ts";
+import { cacheOne } from "./tracks.ts";
 import * as speaker from "./speaker.ts";
 
 /**
@@ -152,6 +153,18 @@ export function createApp(db: DatabaseSync) {
           return json(res, 400, { ok: false, error: "decision must be approved or rejected" });
         }
         const out = decide(db, profileId, uri, decision);
+        /**
+         * Fetch the number line now, while the parent is standing here.
+         *
+         * `release()` will not give a position to an album whose tracks are not cached, so
+         * without this a ✓ would put the album in a queue that only the half-hourly sweep
+         * drains. Deliberately not awaited and deliberately not part of `decide()`: the
+         * decision is recorded whether or not Music Assistant answers, and `review.ts` does
+         * not talk to MA at all — the sweep is the retry, this is only the fast path.
+         */
+        if (out.ok && decision === "approved" && maConfigured()) {
+          void cacheOne(db, speaker.ma, uri);
+        }
         // 200 either way: `ok:false` with a reason is the page's own error path, and a
         // rejected decision is a normal answer rather than a broken request.
         return json(res, 200, out);

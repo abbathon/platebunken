@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { backupTo, openStore } from "./db.ts";
-import { approve, counts, ensureProfile, release, suggest, upsertAlbum, type AlbumInput } from "./crate.ts";
+import { approve, counts, ensureProfile, release, setTracks, suggest, upsertAlbum, type AlbumInput } from "./crate.ts";
 
 const KID = "child_a";
 
@@ -38,6 +38,9 @@ function live(dir: string) {
   for (let n = 1; n <= 5; n++) {
     const a = album(n);
     upsertAlbum(db, a);
+    // A number line, or `release()` below places nothing: a crate position is permanent and
+    // is never spent on an album that would open onto an empty track list.
+    setTracks(db, a.uri, [{ n: 1, title: `Track 1 of ${n}` }]);
     suggest(db, a.uri, "seed", "test");
     approve(db, KID, a.uri);
   }

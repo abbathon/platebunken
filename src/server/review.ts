@@ -17,7 +17,7 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 import {
-  approve, recentlyRejected, reject, release, reopenRejected, reviewQueue, tracks,
+  approve, heldForTracks, recentlyRejected, reject, release, reopenRejected, reviewQueue, tracks,
   waitingToRelease, type QueueEntry, type StoredAlbum,
 } from "../store/crate.ts";
 import { coverPath } from "../ma/images.ts";
@@ -79,6 +79,13 @@ export interface WireReview {
    */
   waiting: WireWaiting[];
   /**
+   * Approved, but not releasable yet: Music Assistant has not given up a track list, and
+   * `release()` will not spend a permanent crate position on an album that opens onto
+   * nothing. Sent so the parent is never left wondering why a ✓ produced no record — the
+   * answer is "it is coming", and the page says so.
+   */
+  held: WireWaiting[];
+  /**
    * The way back from a mis-tapped ✗. `approve()` refuses to reach past a rejection, so
    * without this a wrong tap on a phone loses the album silently and for good.
    */
@@ -96,6 +103,7 @@ export function wireReview(db: DatabaseSync, profileId: string): WireReview {
   return {
     pending: reviewQueue(db).map((e) => wire(db, e)),
     waiting: waitingToRelease(db, profileId).map(wireWaiting),
+    held: heldForTracks(db, profileId).map(wireWaiting),
     rejected: recentlyRejected(db, 10).map((e) => wire(db, e)),
   };
 }

@@ -663,10 +663,14 @@ function albumView(album: Album, track: number): HTMLElement {
   // True track numbers, 1..n, no truncation and no renumbering: accuracy is what makes it
   // learnable. No pips beside the numerals — subitizing range at 42-57 months is 2.8, and the
   // row's position in the column already is the magnitude cue.
+  //
+  // There is no empty state here, and there must not be one. This screen used to print
+  // "Music Assistant returned no tracks for this album" — in English, at a four-year-old who
+  // cannot read — for every album approved at /admin, because nothing but the seed ever
+  // cached a track list. An album with no number line is now simply never shown: the server
+  // holds it back from the crate (`release`) or draws its slot empty (`wireCrate`), so the
+  // only records that reach this function are records that can be played.
   const list = root.querySelector(".tracks")!;
-  if (album.tracks.length === 0) {
-    list.append(el(`<li class="tracks__none">Music Assistant returned no tracks for this album.</li>`));
-  }
   for (const t of album.tracks) {
     /**
      * The mark for a track he keeps choosing — §4.2's number line, and nothing else about it

@@ -268,15 +268,49 @@ export function recentlyRejected(db: DatabaseSync, limit = 10): QueueEntry[] {
 }
 
 /**
+ * An album may not take a position until its number line is cached.
+ *
+ * A position is permanent — `approved_position_set_once` refuses to let anyone change one —
+ * so releasing an album whose tracks are not yet known spends one of the child's memorised
+ * slots on a record that opens onto nothing, and no later fix can move it. The album is not
+ * lost and nothing is decided against it: it keeps its place at the front of the queue and
+ * goes out on the next release after `src/server/tracks.ts` has filled the list in.
+ *
+ * This is the SQL fragment rather than a helper because `release()` and `waitingToRelease()`
+ * must agree exactly, and the cheapest way to guarantee that is for them to share the text.
+ */
+const RELEASABLE = `
+  SELECT uri FROM approved
+   WHERE profile_id = ? AND position IS NULL
+     AND EXISTS (SELECT 1 FROM track t WHERE t.album_uri = approved.uri)
+   ORDER BY approved_at ASC, rowid ASC LIMIT ?`;
+
+/**
  * What is approved and waiting, in the exact order the trickle will release it.
  *
- * Same ORDER BY as `release()` — and it has to stay that way, because this is what the parent
+ * Same query as `release()` — and it has to stay that way, because this is what the parent
  * is shown before they press "release now". A list that disagreed with what actually came out
- * would be worse than no list.
+ * would be worse than no list. That is also why an album still waiting for its track list is
+ * absent here: it is not going to come out, so promising it would be a lie. `heldForTracks()`
+ * is where the parent is told about those instead.
  */
 export function waitingToRelease(db: DatabaseSync, profileId: string, limit = 20): StoredAlbum[] {
+  const rows = db.prepare(RELEASABLE).all(profileId, limit) as { uri: string }[];
+  return rows.map((r) => getAlbum(db, r.uri)!).filter(Boolean);
+}
+
+/**
+ * Approved, but held back because Music Assistant has not yet given up its track list.
+ *
+ * Shown on /admin so the parent is never left wondering why a ✓ produced nothing. An album
+ * that stays here for days is a real signal — usually a provider that has dropped it — and
+ * the answer is to look, not to let it through.
+ */
+export function heldForTracks(db: DatabaseSync, profileId: string, limit = 20): StoredAlbum[] {
   const rows = db.prepare(
-    `SELECT uri FROM approved WHERE profile_id = ? AND position IS NULL
+    `SELECT uri FROM approved
+      WHERE profile_id = ? AND position IS NULL
+        AND NOT EXISTS (SELECT 1 FROM track t WHERE t.album_uri = approved.uri)
       ORDER BY approved_at ASC, rowid ASC LIMIT ?`,
   ).all(profileId, limit) as { uri: string }[];
   return rows.map((r) => getAlbum(db, r.uri)!).filter(Boolean);
@@ -297,12 +331,10 @@ export function waitingToRelease(db: DatabaseSync, profileId: string, limit = 20
  */
 export function release(db: DatabaseSync, profileId: string, limit: number, at: string = now()): StoredAlbum[] {
   if (limit <= 0) return [];
-  const due = db.prepare(
-    // rowid breaks the tie, not uri: a batch approved inside the same millisecond must
-    // enter the crate in the order the parent approved it, not in alphabetical order.
-    `SELECT uri FROM approved WHERE profile_id = ? AND position IS NULL
-      ORDER BY approved_at ASC, rowid ASC LIMIT ?`,
-  ).all(profileId, limit) as { uri: string }[];
+  // RELEASABLE, not every waiting row: an album with no cached track list must not be given
+  // a permanent position. rowid breaks the tie, not uri — a batch approved inside the same
+  // millisecond must enter the crate in the order the parent approved it, not alphabetically.
+  const due = db.prepare(RELEASABLE).all(profileId, limit) as { uri: string }[];
   if (due.length === 0) return [];
 
   const t = at;
@@ -363,7 +395,20 @@ export interface Counts {
   approved: number;
   inCrate: number;
   withdrawn: number;
+  /**
+   * Approved and actually releasable. Excludes albums held back for a missing track list —
+   * this number drives the trickle, so it has to mean "records that will come out", not
+   * "rows in the table".
+   */
   waitingToRelease: number;
+  /** Approved, but with no cached number line yet, so `release()` will not place them. */
+  heldForTracks: number;
+  /**
+   * In the crate, released, and still with no track list. The page draws these as empty
+   * slots rather than as a record that opens onto nothing — see `wireCrate`. Every one is a
+   * cover the child cannot reach, so it is counted and said at boot.
+   */
+  silentSlots: number;
   /** Approved albums with no artwork. In a cover-art interface these are invisible albums. */
   invisible: number;
 }
@@ -377,7 +422,18 @@ export function counts(db: DatabaseSync, profileId: string): Counts {
     approved: one(`SELECT COUNT(*) AS n FROM approved WHERE profile_id = ?`, profileId),
     inCrate: one(`SELECT COUNT(*) AS n FROM approved WHERE profile_id = ? AND position IS NOT NULL AND withdrawn_at IS NULL`, profileId),
     withdrawn: one(`SELECT COUNT(*) AS n FROM approved WHERE profile_id = ? AND withdrawn_at IS NOT NULL`, profileId),
-    waitingToRelease: one(`SELECT COUNT(*) AS n FROM approved WHERE profile_id = ? AND position IS NULL`, profileId),
+    waitingToRelease: one(
+      `SELECT COUNT(*) AS n FROM approved
+        WHERE profile_id = ? AND position IS NULL
+          AND EXISTS (SELECT 1 FROM track t WHERE t.album_uri = approved.uri)`, profileId),
+    heldForTracks: one(
+      `SELECT COUNT(*) AS n FROM approved
+        WHERE profile_id = ? AND position IS NULL
+          AND NOT EXISTS (SELECT 1 FROM track t WHERE t.album_uri = approved.uri)`, profileId),
+    silentSlots: one(
+      `SELECT COUNT(*) AS n FROM approved
+        WHERE profile_id = ? AND position IS NOT NULL AND withdrawn_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM track t WHERE t.album_uri = approved.uri)`, profileId),
     invisible: one(
       `SELECT COUNT(*) AS n FROM approved p JOIN album a ON a.uri = p.uri
         WHERE p.profile_id = ? AND a.cover_proxy_id IS NULL`, profileId),
@@ -412,8 +468,11 @@ export function setTracks(db: DatabaseSync, albumUri: string, tracks: readonly T
   try {
     db.prepare(`DELETE FROM track WHERE album_uri = ?`).run(albumUri);
     const ins = db.prepare(`INSERT INTO track (album_uri, n, title, uri) VALUES (?, ?, ?, ?)`);
-    // Last write wins on a duplicate number rather than throwing: a malformed tag must not
-    // be able to fail a seed run, and a duplicate n is a tagging bug, not a store bug.
+    // FIRST write wins on a duplicate number rather than throwing: a malformed tag must not
+    // be able to fail a run, and a duplicate n is a tagging bug, not a store bug. First and
+    // not last is what makes a deluxe edition usable — Music Assistant answers with forty
+    // tracks for Abbey Road, disc one followed by the session outtakes, and keeping the
+    // first of each number yields the seventeen-track record rather than the outtakes.
     const seen = new Set<number>();
     for (const t of tracks) {
       if (seen.has(t.n)) continue;

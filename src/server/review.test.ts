@@ -33,8 +33,18 @@ const album = (n: number, over: Partial<AlbumInput> = {}): AlbumInput => ({
   ...over,
 });
 
-/** Put an album in the queue, undecided. */
+/**
+ * Put an album in the queue, undecided — with a track list, because `release()` will not give
+ * a permanent crate position to an album that has none. `offerTrackless` is the other case.
+ */
 function offer(db: ReturnType<typeof store>, n: number, over: Partial<AlbumInput> = {}) {
+  const a = offerTrackless(db, n, over);
+  setTracks(db, a.uri, [{ n: 1, title: `Track 1 of ${n}` }, { n: 2, title: `Track 2 of ${n}` }]);
+  return a;
+}
+
+/** The same, but with no number line: approved, and held back rather than released. */
+function offerTrackless(db: ReturnType<typeof store>, n: number, over: Partial<AlbumInput> = {}) {
   const a = album(n, over);
   upsertAlbum(db, a);
   suggest(db, a.uri, "similar", "test");
@@ -187,8 +197,8 @@ test("an album still open from another source is not listed as rejected", () => 
 
 test("a track list is shown when it was cached, and its absence is not an error", () => {
   const db = store();
-  const withTracks = offer(db, 1);
-  const without = offer(db, 2);
+  const withTracks = offerTrackless(db, 1);
+  const without = offerTrackless(db, 2);
   setTracks(db, withTracks.uri, [
     { n: 1, title: "First", uri: "qobuz://track/1" },
     { n: 2, title: "Second", uri: "qobuz://track/2" },

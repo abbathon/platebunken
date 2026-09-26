@@ -28,10 +28,17 @@ const album = (n: number): AlbumInput => ({
   artist: `Artist ${n}`, title: `Album ${n}`, year: 1990 + n, coverProxyId: `cover-${n}`,
 });
 
-/** Suggest, approve and release — an album actually in the crate. */
+/**
+ * Suggest, approve and release — an album actually in the crate.
+ *
+ * The placeholder track is what makes the release happen at all: `release()` will not spend a
+ * permanent position on an album with no number line. Tests that care about the list call
+ * `setTracks` again afterwards, which replaces it wholesale.
+ */
 function inCrate(db: ReturnType<typeof store>, n: number) {
   const a = album(n);
   upsertAlbum(db, a);
+  setTracks(db, a.uri, [{ n: 1, title: `Track 1 of ${n}` }]);
   suggest(db, a.uri, "seed", "test");
   approve(db, KID, a.uri);
   release(db, KID, 1);

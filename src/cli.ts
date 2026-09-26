@@ -103,6 +103,9 @@ async function cmdCurate(): Promise<void> {
   console.log(`  no artwork         ${report.skippedNoArtwork}`);
   console.log(`  already known      ${report.skippedKnown}`);
   console.log(`  duplicate release  ${report.skippedDuplicate}`);
+  // Not cosmetic: an album with no track list cannot be released, so this line is the
+  // difference between suggestions that will reach the crate and suggestions that will queue.
+  console.log(`track lists          ${report.withTracks} cached, ${report.noTracks} missing`);
   console.log("");
 
   if (!report.candidates.length) {
@@ -171,7 +174,8 @@ async function cmdSeed(): Promise<void> {
     console.log(`  ${report.noArtwork} with no artwork — invisible in a cover-art interface; run the beets pass`);
   }
   if (report.noTracks) {
-    console.log(`  ${report.noTracks} with no track list — the album plays, but its number line is empty`);
+    console.log(`  ${report.noTracks} with no track list — HELD BACK, not released: an album with no number`);
+    console.log(`    line opens onto nothing. The server retries every half hour and releases them then.`);
   }
 
   const c = report.counts;

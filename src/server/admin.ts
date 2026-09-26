@@ -138,6 +138,10 @@ const ADMIN_HTML = `<!doctype html>
   .queueline .first { outline: 2px solid var(--yes); outline-offset: 1px; }
   .shelf .actions { margin-top: 0; }
   .shelf button.yes { background: #4a7d45; border-color: #5f9a58; }
+  /* Held back, not rejected. Deliberately not the red of an error and not the green of the
+     shelf: nothing is wrong and nothing is ready, and the card should read as neither. */
+  .shelf--held { background: #221f1a; border-color: #3b342a; }
+  .shelf--held h2 { color: #d0b483; }
   .ok { background: #1e2b1c; border: 1px solid var(--yes); color: #c9e3c1;
         padding: 11px 13px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
   .gate { min-height: 82vh; display: grid; place-content: center; justify-items: center; gap: 18px; }
@@ -179,6 +183,13 @@ const ADMIN_HTML = `<!doctype html>
     </div>
   </div>
 </section>
+<section id="held-wrap" hidden>
+  <div class="shelf shelf--held">
+    <h2 id="held-title"></h2>
+    <p id="held-help"></p>
+    <div class="queueline" id="heldline"></div>
+  </div>
+</section>
 <main id="queue"><p class="empty">Laster…</p></main>
 <section id="rejected-wrap" hidden>
   <h2>Nylig avvist</h2>
@@ -201,6 +212,10 @@ const ADMIN_HTML = `<!doctype html>
   var queueline = document.getElementById("queueline");
   var releaseOne = document.getElementById("release-one");
   var releaseAll = document.getElementById("release-all");
+  var heldWrap = document.getElementById("held-wrap");
+  var heldTitle = document.getElementById("held-title");
+  var heldHelp = document.getElementById("held-help");
+  var heldline = document.getElementById("heldline");
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -373,6 +388,40 @@ const ADMIN_HTML = `<!doctype html>
     releaseAll.disabled = false;
   }
 
+  /**
+   * Approved, but with no track list yet, so it cannot be given a crate position.
+   *
+   * This card exists because of the failure it names. For as long as the product has had a
+   * review queue, nothing but the seed ever cached a track list — so every ✓ here produced
+   * an album that reached the crate and opened onto an English error message. The server
+   * now holds those albums back instead, and a hold nobody is told about is the same silent
+   * ✓ in a different costume. So: what is held, why, and that it resolves itself.
+   *
+   * No button. There is nothing for the parent to do and nothing they should be offered —
+   * a "release anyway" here would spend a permanent position on a record the child cannot
+   * open, which is the exact thing being fixed.
+   */
+  function renderHeld(held) {
+    heldWrap.hidden = !held.length;
+    if (!held.length) return;
+
+    var n = held.length;
+    heldTitle.textContent = n === 1
+      ? "1 plate venter p\u00e5 sporlisten"
+      : n + " plater venter p\u00e5 sporlisten";
+    heldHelp.textContent =
+      "Godkjent, men Music Assistant har ikke gitt fra seg sporene enn\u00e5. De kommer i bunken "
+      + "n\u00e5r listen er p\u00e5 plass \u2014 serveren pr\u00f8ver hver halvtime. "
+      + "En plate som blir st\u00e5ende her i flere dager er borte hos leverand\u00f8ren.";
+
+    heldline.textContent = "";
+    held.forEach(function (w) {
+      var thumb = art(w, "");
+      thumb.title = w.artist + " \u2014 " + w.title;
+      heldline.appendChild(thumb);
+    });
+  }
+
   function doRelease(count, button) {
     button.disabled = true;
     showError("");
@@ -402,6 +451,7 @@ const ADMIN_HTML = `<!doctype html>
 
   function render(data) {
     renderShelf(data.waiting || []);
+    renderHeld(data.held || []);
     queue.textContent = "";
     countEl.textContent = data.pending.length ? data.pending.length + " i k\\u00f8" : "";
 

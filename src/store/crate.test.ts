@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { openStore } from "./db.ts";
 import {
   addFlag, approve, counts, crate, ensureProfile, getAlbum,
-  reject, release, reopenRejected, reviewQueue, suggest, upsertAlbum, withdraw,
+  reject, release, reopenRejected, reviewQueue, setTracks, suggest, upsertAlbum, withdraw,
   type AlbumInput,
 } from "./crate.ts";
 
@@ -32,10 +32,19 @@ const album = (n: number, over: Partial<AlbumInput> = {}): AlbumInput => ({
   ...over,
 });
 
-/** Suggest and approve in one step, for tests about what happens after the gate. */
+/**
+ * Suggest and approve in one step, for tests about what happens after the gate.
+ *
+ * The track list is part of admitting an album, not decoration on it: `release()` refuses to
+ * give a permanent crate position to an album with no cached number line, because a position
+ * spent on a record that opens onto nothing can never be reclaimed. A test that wants to see
+ * what the crate does with an album has to give it one. `heldForTracks` is where the other
+ * case is tested on purpose.
+ */
 function admit(db: ReturnType<typeof store>, n: number, over: Partial<AlbumInput> = {}) {
   const a = album(n, over);
   upsertAlbum(db, a);
+  setTracks(db, a.uri, [{ n: 1, title: `Track 1 of ${n}` }, { n: 2, title: `Track 2 of ${n}` }]);
   suggest(db, a.uri, "similar", "test");
   approve(db, KID, a.uri);
   return a;
@@ -122,6 +131,7 @@ test("two profiles keep independent position lines", () => {
   ensureProfile(db, "child_b", "child B");
   const a = album(1);
   upsertAlbum(db, a);
+  setTracks(db, a.uri, [{ n: 1, title: "One" }]);
   suggest(db, a.uri, "seed");
   approve(db, KID, a.uri);
   approve(db, "child_b", a.uri);
@@ -190,6 +200,7 @@ test("the same album arriving from a second source does not duplicate the crate 
   const db = store();
   const a = album(1);
   upsertAlbum(db, a);
+  setTracks(db, a.uri, [{ n: 1, title: "One" }]);
   suggest(db, a.uri, "similar", "Artist 9");
   suggest(db, a.uri, "chart", "NO top 50");
   approve(db, KID, a.uri);

@@ -34,7 +34,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { MassClient } from "../ma/client.ts";
 import type { Album } from "../ma/types.ts";
 import {
-  addFlag, cacheGet, cachePut, cacheStale, crateArtists, fromMassAlbum, knownUris, suggest, upsertAlbum,
+  addFlag, cacheGet, cachePut, cacheStale, crateArtists, fromMassAlbum, knownUris, setTracks, suggest,
+  upsertAlbum,
 } from "../store/crate.ts";
 import { foldName, resolveArtistMbid, sameArtist, similarArtists, type Fetcher, type Neighbour } from "./sources.ts";
 import { fetchThemeRoster, indexRoster, themeHitsFor, THEME_TERMS, type ThemeBand } from "./themes.ts";
@@ -101,6 +102,16 @@ export interface CurateReport {
   skippedWrongArtist: number;
   /** Re-releases of something already queued this run: remasters, deluxe editions. */
   skippedDuplicate: number;
+  /**
+   * Suggestions whose track list came back with the album, and suggestions it did not.
+   *
+   * An album with no cached number line cannot be released — `release()` refuses to spend a
+   * permanent position on one — so this is not bookkeeping. It is the difference between a
+   * ✓ that puts a record in the crate tomorrow morning and one that puts it in a holding
+   * pen. `src/server/tracks.ts` sweeps up whatever lands in `noTracks`.
+   */
+  withTracks: number;
+  noTracks: number;
 }
 
 /**
@@ -228,7 +239,7 @@ export async function curate(
     noDeezerMatch: [],
     crateArtists: 0, resolved: 0, unresolved: [], neighbours: 0, alreadyHave: 0,
     searched: 0, candidates: [], skippedNoArtwork: 0, skippedKnown: 0, skippedWrongArtist: 0,
-    skippedDuplicate: 0,
+    skippedDuplicate: 0, withTracks: 0, noTracks: 0,
   };
 
   if (!useListenBrainz && !useDeezer) {
@@ -392,8 +403,31 @@ export async function curate(
       const input = fromMassAlbum(a);
       const hits = themeHitsFor(n.name, themeIndex);
 
+      /**
+       * The number line, cached with the album rather than after it.
+       *
+       * This is the hole the whole feature fell through. The worker wrote the album row and
+       * the candidacy and stopped there, so every album that reached the crate through
+       * /admin had no tracks at all — a cover the child could open onto an English error
+       * message. Music Assistant is already connected and the album is already in hand, so
+       * this is one extra round trip at the one moment it is cheapest.
+       *
+       * A failure is not a reason to drop the candidate: the album is worth reviewing
+       * whether or not its track list loaded today, and `src/server/tracks.ts` retries every
+       * half hour. What a failure costs is a release cycle, not the album.
+       */
+      let trackList: { n: number; title: string; uri: string | null }[] = [];
+      try {
+        const found = await client.albumTracks(input.itemId, input.provider);
+        trackList = found.map((t, i) => ({ n: t.track_number ?? i + 1, title: t.name, uri: t.uri ?? null }));
+      } catch (e) {
+        log(`[curate] ! no track list for ${input.artist} — ${input.title}: ${(e as Error).message}`);
+      }
+      if (trackList.length) report.withTracks++; else report.noTracks++;
+
       if (write) {
         upsertAlbum(db, input);
+        if (trackList.length) setTracks(db, a.uri, trackList);
         // `candidate.source` is constrained to seed/similar/chart/request by the schema, so
         // WHICH graph proposed this lives in the detail. Free text, no migration, and the
         // review queue already renders it verbatim on the card.

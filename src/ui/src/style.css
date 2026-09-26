@@ -529,7 +529,6 @@ html, body {
 .switch__theme:hover { background: #333 !important; }
 
 .cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.tracks__none { color: var(--ink-dim); font-size: 17px; padding: 20px 12px; list-style: none; }
 
 /* ── keyboard focus ───────────────────────────────────────────────
    The child cannot read, so the selected sleeve must be obvious from across a room: it

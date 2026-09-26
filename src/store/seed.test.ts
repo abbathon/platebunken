@@ -47,6 +47,16 @@ const albumTrack = (album: number, n: number): Track => ({
 } as Track);
 
 /**
+ * The album track lists that go with a playlist.
+ *
+ * Passed by every test that expects a record to actually reach the crate, because
+ * `release()` will not spend a permanent position on an album with no cached number line.
+ * A test that leaves an album out of this is testing the held-back path on purpose.
+ */
+const listing = (...albums: number[]): Record<string, Track[]> =>
+  Object.fromEntries(albums.map((a) => [String(a), [albumTrack(a, 1), albumTrack(a, 2)]]));
+
+/**
  * A stand-in for Music Assistant that answers from a script.
  *
  * `reads` is the successive answers to `playlistTracks()` — which is the whole point of the
@@ -91,7 +101,7 @@ test("two reads that agree are trusted, and the crate is seeded", async () => {
   const db = store();
   const list = [entry(1), entry(2)];
 
-  const report = await run(db, source([list, list]));
+  const report = await run(db, source([list, list], listing(1, 2)));
 
   assert.equal(report.ok, true);
   assert.equal(report.albums, 2);
@@ -113,7 +123,7 @@ test("the parent's order is the crate's order, and an album's first appearance w
   // track gave it: the parent's ordering is the product, not a detail.
   const list = [entry(1, 1), entry(2, 1), entry(1, 2), entry(3, 1), entry(2, 2)];
 
-  await run(db, source([list, list]));
+  await run(db, source([list, list], listing(1, 2, 3)));
 
   const slots = crate(db, KID);
   assert.deepEqual(slots.map((s) => s.album?.title), ["Album 1", "Album 2", "Album 3"]);
@@ -124,7 +134,7 @@ test("the seed does not trickle: every album is in the crate at once", async () 
   const db = store();
   const list = Array.from({ length: 6 }, (_, i) => entry(i + 1));
 
-  const report = await run(db, source([list, list]));
+  const report = await run(db, source([list, list], listing(1, 2, 3, 4, 5, 6)));
 
   // A child cannot wait a fortnight for his own record collection to arrive, and there is no
   // existing crate for a new record to stand out against. §4.1's trickle starts after this.
@@ -147,12 +157,12 @@ test("a dry run reads everything and writes nothing", async () => {
 test("re-seeding appends and never renumbers what the child already has", async () => {
   const db = store();
   const first = [entry(1), entry(2)];
-  await run(db, source([first, first]));
+  await run(db, source([first, first], listing(1, 2)));
 
   // The parent adds a record to the front of their playlist. The crate must not reshuffle:
   // position 0 is the only index a pre-reader has into his own music.
   const second = [entry(9), ...first];
-  const report = await run(db, source([second, second]));
+  const report = await run(db, source([second, second], listing(1, 2, 9)));
 
   assert.equal(report.fresh, 1);
   assert.equal(report.already, 2);
@@ -160,33 +170,39 @@ test("re-seeding appends and never renumbers what the child already has", async 
   assert.deepEqual(slots.map((s) => s.album?.title), ["Album 1", "Album 2", "Album 9"]);
 });
 
-test("an album whose track list will not load still enters the crate", async () => {
+test("an album whose track list will not load is approved but held back, not released", async () => {
   const db = store();
   const list = [entry(1), entry(2)];
 
-  // Album 2's tracks throw. The record plays from its own uri; what is missing is the
-  // number line, not the album.
+  // Album 2's tracks throw. It is still recorded and still approved — the parent's playlist
+  // IS the approval — but it does not take a crate position, because a position is permanent
+  // and an album with no number line opens onto nothing. It comes out on a later sweep.
   const report = await run(db, source([list, list], { "1": [albumTrack(1, 1), albumTrack(1, 2)] }));
 
   assert.equal(report.ok, true);
   assert.equal(report.noTracks, 1);
-  assert.equal(counts(db, KID).inCrate, 2);
+  assert.equal(report.released, 1, "only the album that has a number line takes a position");
+  assert.equal(counts(db, KID).inCrate, 1);
+  assert.equal(counts(db, KID).heldForTracks, 1);
   assert.equal(tracks(db, "qobuz://album/1").length, 2);
   assert.equal(tracks(db, "qobuz://album/2").length, 0);
 });
 
-test("a re-seed refreshes the number line of an album already in the crate", async () => {
+test("a re-seed refreshes the number line, and releases what was held back for it", async () => {
   const db = store();
   const list = [entry(1)];
   await run(db, source([list, list]));
   assert.equal(tracks(db, "qobuz://album/1").length, 0);
+  assert.equal(counts(db, KID).inCrate, 0, "no number line, no position");
+  assert.equal(counts(db, KID).heldForTracks, 1);
 
   // Backfills albums seeded before tracks were stored, and picks up a re-tag. The tracks are
   // the one part of an album allowed to change; its position never is.
   await run(db, source([list, list], { "1": [albumTrack(1, 1), albumTrack(1, 2)] }));
 
   assert.equal(tracks(db, "qobuz://album/1").length, 2);
-  assert.equal(crate(db, KID)[0]?.position, 0);
+  assert.equal(counts(db, KID).heldForTracks, 0);
+  assert.equal(crate(db, KID)[0]?.position, 0, "it takes the first position, not a later one");
 });
 
 test("a playlist entry with no album is skipped rather than seeding a nameless record", async () => {
@@ -194,7 +210,7 @@ test("a playlist entry with no album is skipped rather than seeding a nameless r
   const orphan = { ...entry(5), album: null } as Track;
   const list = [entry(1), orphan];
 
-  const report = await run(db, source([list, list]));
+  const report = await run(db, source([list, list], listing(1)));
 
   assert.equal(report.albums, 1);
   assert.equal(counts(db, KID).inCrate, 1);

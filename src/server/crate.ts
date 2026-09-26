@@ -94,11 +94,27 @@ export function wireCrate(db: DatabaseSync, profileId: string): WireCrate {
 
   const slots = crate(db, profileId).map((s): WireSlot => {
     if (!s.album) return { position: s.position, album: null };
+    const stored = tracksByUri.get(s.album.uri) ?? [];
+
+    /**
+     * An album with no number line is not shown at all.
+     *
+     * Until `src/server/tracks.ts` existed, only the seed cached tracks — so every album
+     * approved at /admin landed here with none, and opening one told a four-year-old in
+     * English that Music Assistant had returned no tracks. A record that opens onto a
+     * sentence he cannot read is worse than no record.
+     *
+     * It becomes an EMPTY SLOT, which is the same thing a withdrawn album becomes, and for
+     * the same reason: the position is spent and permanent, so hiding the album must not be
+     * allowed to move anything after it. `release()` now refuses to place a trackless album
+     * in the first place, so this path only ever covers the ones released before that rule
+     * existed — and it heals itself, because the moment the sweep caches the tracks the
+     * cover appears in the slot it always had.
+     */
+    if (stored.length === 0) return { position: s.position, album: null };
+
     const fav = favourites.get(s.album.uri);
-    const tracks = (tracksByUri.get(s.album.uri) ?? []).map((t) => ({
-      ...t,
-      favourite: fav?.has(t.n) ?? false,
-    }));
+    const tracks = stored.map((t) => ({ ...t, favourite: fav?.has(t.n) ?? false }));
     return { position: s.position, album: wire(s.album, tracks) };
   });
 

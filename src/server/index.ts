@@ -20,6 +20,7 @@ import { CHECK_INTERVAL_MS, runTrickle } from "./trickle.ts";
 import { CURATE_HOUR, runCuration } from "./curation.ts";
 import { BACKUP_HOUR, existingBackups, backupDir, runBackup } from "./backup.ts";
 import { enabledSources } from "../curate/worker.ts";
+import { sweepTracks } from "./tracks.ts";
 import { config } from "./config.ts";
 import { createApp } from "./app.ts";
 import { canPlay, closeMa, ma, restoreTarget, target } from "./speaker.ts";
@@ -53,6 +54,20 @@ function announce(): void {
   }
   if (c.invisible > 0) {
     console.warn(`  ! ${c.invisible} approved albums have no artwork; in a cover-art interface those are invisible albums.`);
+  }
+  /**
+   * Albums the child cannot reach because their number line is not cached yet.
+   *
+   * Both numbers should be zero within half an hour of a boot with MA up — `tracks()` below
+   * fills them in. A number that stays is a real fault, and the two are different faults: a
+   * held-back album is one the parent approved and has not seen appear, a silent slot is a
+   * position already spent on a record the crate is drawing as empty.
+   */
+  if (c.heldForTracks > 0) {
+    console.warn(`  ! ${c.heldForTracks} approved albums have no track list yet and will not be released until they do.`);
+  }
+  if (c.silentSlots > 0) {
+    console.warn(`  ! ${c.silentSlots} albums hold a crate position with no track list; their slots draw EMPTY until it arrives.`);
   }
   /**
    * The curation schedule, said at boot for the same reason as everything else here: the
@@ -143,6 +158,23 @@ function curation(): void {
 }
 
 /**
+ * The number line, filled in for anything missing one (`tracks.ts`).
+ *
+ * Shares the same half-hourly wake-up as the rest. Until this existed only `pb seed` ever
+ * cached a track list, so every album approved at /admin reached the crate unplayable — the
+ * child saw a cover, opened it, and got an English error message. It is the retry behind
+ * both the approval fast path in `app.ts` and the curation worker.
+ *
+ * The ONE scheduled job the trickle waits for — see `wake()`. Everything else here is
+ * fire-and-forget; this is not, because an album cannot be released until its tracks are
+ * cached. `sweepTracks` never throws, so awaiting it cannot block the release.
+ */
+async function tracks(): Promise<void> {
+  if (!config.ma.host || !config.ma.token) return;
+  await sweepTracks(db, ma, { profileId: config.profile.id });
+}
+
+/**
  * The crate backs itself up (§3.1, `backup.ts`).
  *
  * Shares the same half-hourly wake-up as the other two. Synchronous and quick — the store is
@@ -208,14 +240,30 @@ async function backfillPlayerName(): Promise<void> {
   } catch { /* MA unreachable at boot is normal; the next restart tries again. */ }
 }
 
+/**
+ * One wake-up: fill in missing track lists, then release, then curate, then back up.
+ *
+ * The sweep runs BEFORE the trickle and the trickle waits for it, which is the one ordering
+ * in here that is load-bearing. `release()` will not give a position to an album with no
+ * cached track list, so a trickle that ran first would decide there was nothing to release
+ * and then sit out the rest of the day — the release is once daily, so getting the order
+ * wrong costs twenty-four hours per album rather than one wake-up.
+ *
+ * `sweepTracks` never throws, so the trickle runs whether or not Music Assistant answered.
+ * Curation and backup are independent of both and do not wait.
+ */
+function wake(): void {
+  void tracks().then(trickle);
+  curation();
+  backup();
+}
+
 server.listen(config.port, config.host, () => {
   announce();
   void checkMaReachable();
   void backfillPlayerName();
-  trickle();
-  curation();
-  backup();
-  setInterval(() => { trickle(); curation(); backup(); }, CHECK_INTERVAL_MS).unref();
+  wake();
+  setInterval(wake, CHECK_INTERVAL_MS).unref();
 });
 
 /**

@@ -149,7 +149,10 @@ export async function runCuration(
     log(
       n === 0
         ? `[curate] nothing new to suggest today (${report.searched} artists searched)`
-        : `[curate] ${n} new albums in the review queue`,
+        : `[curate] ${n} new albums in the review queue` +
+          // Said here rather than only in the report, because an album with no track list
+          // will not be released and the parent's ✓ on it looks like it did nothing.
+          (report.noTracks ? ` (${report.noTracks} still without a track list)` : ""),
     );
     return report;
   } catch (e) {

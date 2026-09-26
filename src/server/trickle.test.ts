@@ -14,7 +14,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openStore } from "../store/db.ts";
-import { approve, counts, ensureProfile, suggest, upsertAlbum, type AlbumInput } from "../store/crate.ts";
+import { approve, counts, ensureProfile, setTracks, suggest, upsertAlbum, type AlbumInput } from "../store/crate.ts";
 import { localDate, runTrickle, trickleDue, RELEASE_HOUR } from "./trickle.ts";
 
 const KID = "child_a";
@@ -30,11 +30,18 @@ const album = (n: number): AlbumInput => ({
   artist: `Artist ${n}`, title: `Album ${n}`, year: 1990 + n, coverProxyId: `cover-${n}`,
 });
 
-/** Approve n albums, leaving them waiting for release. */
+/**
+ * Approve n albums, leaving them waiting for release.
+ *
+ * Each gets a track list. `release()` skips an album that has none — a crate position is
+ * permanent, so it is never spent on a record that would open onto nothing — and every test
+ * in this file is about WHEN a release happens, not about that rule.
+ */
 function approveMany(db: ReturnType<typeof store>, n: number) {
   for (let i = 1; i <= n; i++) {
     const a = album(i);
     upsertAlbum(db, a);
+    setTracks(db, a.uri, [{ n: 1, title: `Track 1 of ${i}` }]);
     suggest(db, a.uri, "similar", "test");
     approve(db, KID, a.uri);
   }

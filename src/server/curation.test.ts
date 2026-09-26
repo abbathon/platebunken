@@ -28,6 +28,7 @@ const empty = (): CurateReport => ({
   disabled: [], noDeezerMatch: [], crateArtists: 0, resolved: 0, unresolved: [],
   neighbours: 0, alreadyHave: 0, searched: 0, candidates: [],
   skippedNoArtwork: 0, skippedKnown: 0, skippedWrongArtist: 0, skippedDuplicate: 0,
+  withTracks: 0, noTracks: 0,
 });
 
 /** A worker stand-in that records its calls instead of curating. */
