@@ -46,24 +46,22 @@
     group: "{{ kiosk_user }}"
     mode: "0755"
 
-- name: Autostart the idle watch and the screensaver with the session
+- name: Autostart the idle watch with the session
   ansible.builtin.template:
-    src: "{{ item }}.desktop.j2"
-    dest: "{{ kiosk_home }}/.config/autostart/{{ item }}.desktop"
+    src: platebunken-idle-watch.desktop.j2
+    dest: "{{ kiosk_home }}/.config/autostart/platebunken-idle-watch.desktop"
     owner: "{{ kiosk_user }}"
     group: "{{ kiosk_user }}"
     mode: "0644"
-  loop:
-    - platebunken-idle-watch
-    - xscreensaver
 
-- name: xscreensaver's own config
-  ansible.builtin.template:
-    src: xscreensaver.j2
-    dest: "{{ kiosk_home }}/.xscreensaver"
-    owner: "{{ kiosk_user }}"
-    group: "{{ kiosk_user }}"
-    mode: "0644"
+- name: No leftover xscreensaver config from the reverted attempt
+  # ansible/roles/kiosk/templates/kiosk.sh.j2 explains the revert: a hard freeze ~27s into a
+  # boot, correlated with xscreensaver's session daemon on this machine's old i915 GPU, with
+  # no coredump tool installed to get further than correlation. Removed rather than left inert
+  # — an orphaned config for a package no longer installed is a trap for whoever finds it later.
+  ansible.builtin.file:
+    path: "{{ kiosk_home }}/.xscreensaver"
+    state: absent
 
 - name: Let {{ kiosk_user }} suspend without a polkit prompt nobody is there to answer
   ansible.builtin.template:
@@ -71,31 +69,33 @@
     dest: /etc/polkit-1/rules.d/46-platebunken-suspend.rules
     mode: "0644"
 
-- name: No locking screensaver, ever
+- name: No screensaver program, and above all no locker
   # Same tag as the base role's install: apt needs python3-apt on the target to run under
   # --check, so a dry run can skip both and still exercise everything else.
   tags: [packages]
-  # §4.3 still forbids a LOCKING screensaver absolutely: a locker in front of a four-year-old
-  # who cannot read is a device that has stopped existing. Purged rather than disabled, so a
-  # later desktop update cannot quietly bring one back. xscreensaver is no longer in this list
-  # — see below — because its own locking is disabled in config (`lock: False`), not by being
-  # absent from the machine, and that is the weaker guarantee. These two have no such config
-  # knob worth trusting, so absence is still the only guarantee for them.
+  # §4.3 is explicit: never a screensaver program and never a locking one. xscreensaver was
+  # tried here for one day and reverted: a hard freeze ~27s into a boot, no kernel panic, no
+  # GPU error, no clean shutdown logged, correlated with xscreensaver's session daemon on this
+  # machine's old i915 GPU — see kiosk.sh.j2 for the full account. Purged rather than
+  # disabled, so a later desktop update (or a future well-meaning re-add) cannot quietly bring
+  # one back without someone reading this comment first.
   ansible.builtin.apt:
     name:
       - xfce4-screensaver
       - light-locker
+      - xscreensaver
+      - xscreensaver-data
+      - xscreensaver-gl
     state: absent
     purge: true
 
-- name: xscreensaver, and what it needs to know when to suspend
-  # §4.3: screensaver at kiosk_screensaver_seconds, real suspend at kiosk_suspend_seconds — see
-  # xscreensaver.j2 and platebunken-idle-watch.sh.j2 for why each exists and what stops the
-  # suspend half from ever cutting off a record mid-track.
+- name: What platebunken-idle-watch.sh needs to know when to suspend
+  # §4.3: real suspend at kiosk_suspend_seconds — see platebunken-idle-watch.sh.j2 for what
+  # stops it from ever cutting off a record mid-track. Blanking itself is back to plain xset
+  # in kiosk.sh.j2, no package needed for that half.
   tags: [packages]
   ansible.builtin.apt:
     name:
-      - xscreensaver
       - xprintidle
     state: present
 

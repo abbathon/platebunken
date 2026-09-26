@@ -44,7 +44,9 @@ kiosk_url: "http://10.0.0.0:8080/"
 kiosk_treat_as_secure_origin: true
 
 # ── idle behaviour (§4.3 — the host owns this, never the app) ─────────
-# Screensaver (screen only) at 10 minutes idle, real suspend at 30 — and suspend checks
-# squeezelite's ALSA state first, so it never fires mid-record even if this clock says idle.
+# Plain xset blanking at 10 minutes idle, real suspend at 30 — and suspend checks squeezelite's
+# ALSA state first, so it never fires mid-record even if this clock says idle. A real
+# screensaver program (xscreensaver) was tried and reverted the same day: it correlated with a
+# hard freeze on this hardware's old i915 GPU. See ARCHITECTURE.md §4.3.
 kiosk_screensaver_seconds: 600
 kiosk_suspend_seconds: 1800

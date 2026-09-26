@@ -1,12 +1,15 @@
 #!/bin/sh
 # Managed by Ansible — platebunken/ansible/roles/kiosk. Hand edits will be overwritten.
 
-# §4.3: the HOST owns idle behaviour, not the app. The page implements no idle timer, no dim,
-# no clock. Screensaver and suspend now live in xscreensaver and platebunken-idle-watch.sh —
-# not here, and not in xset: two things owning blanking is the one thing §4.3 warned against,
-# so this script owns neither anymore.
-xset s off
-xset -dpms
+# §4.3: the HOST owns blanking, not the app. xscreensaver was tried here and reverted the same
+# day: a hard freeze, ~27s into a boot, with no kernel panic, no GPU error and no clean
+# shutdown logged — correlated with xscreensaver's own session daemon, not proven against it,
+# but there was no coredump tool installed to get further and this runs a child's device. Back
+# to the plain xset blanking that had run for weeks without incident. Suspend at 30 minutes
+# (platebunken-idle-watch.sh) is unaffected — nothing in the freeze implicated it.
+xset s blank
+xset s {{ kiosk_screensaver_seconds }}
+xset dpms {{ kiosk_screensaver_seconds }} {{ kiosk_screensaver_seconds }} {{ kiosk_screensaver_seconds }}
 
 # §10 says a Chromium crash is "~2 s black, then the crate". Make that literally true: a
 # black root window means the gap shows nothing rather than a desktop he could poke at.
@@ -53,7 +56,17 @@ wait_for_server() {
 # This weakens a real browser protection, and it is the right call HERE and only here: one
 # machine, one origin, one LAN, no WAN, no other site ever loaded. The portable answer is TLS
 # in the stack; turn this off the day that exists.
+SECURE_ORIGIN_FLAG='--unsafely-treat-insecure-origin-as-secure={{ kiosk_origin }}'
+{% else %}
+# kiosk_url is already https — real TLS, not this workaround. No flag needed.
+SECURE_ORIGIN_FLAG=''
 {% endif %}
+# --password-store=basic: autologin never supplies a password, so PAM never unlocks the login
+# keyring, and Chromium's default libsecret-backed store asks it to anyway on every start —
+# an "Unlock Login Keyring" dialog nobody is there to answer, stealing input from the crate
+# behind it. Nothing on this kiosk needs an encrypted password store; this tells Chromium to
+# keep its own unencrypted one instead of asking gnome-keyring at all.
+
 # Restart always, with no rate limit. systemd gives up after ~5 rapid restarts by default,
 # which is the failure mode that looks like "the screen just went black and stayed black".
 while true; do
@@ -67,7 +80,8 @@ while true; do
     --disable-session-crashed-bubble \
     --disable-features=OverscrollHistoryNavigation,TouchpadOverscrollHistoryNavigation,TranslateUI \
     --autoplay-policy=no-user-gesture-required \
-    --check-for-update-interval=31536000{% if kiosk_treat_as_secure_origin %} \
-    --unsafely-treat-insecure-origin-as-secure="{{ kiosk_origin }}"{% endif %}
+    --check-for-update-interval=31536000 \
+    --password-store=basic \
+    $SECURE_ORIGIN_FLAG
   sleep 2
 done

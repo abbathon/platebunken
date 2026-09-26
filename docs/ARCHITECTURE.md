@@ -345,22 +345,30 @@ The track list, rendered as a number line — the best-evidenced pedagogic featu
   wake lock and never fights the host's screen state — a free consequence of §3's decision to
   keep the laptop a stateless UI. It does **not** keep playing through a suspend, which is
   exactly why suspend, below, checks first.
-- **A locking screensaver is still forbidden. A non-locking one no longer is.** The original
-  rule here was "no screensaver program at all": most screensaver hosts swallow the keypress
-  that wakes them, so the child's first press does nothing and he has to press again, which is
-  exactly the disappointment principle 1 is about. The parent later decided that risk was
-  worth taking for the power and wear saved on hardware left running for hours. xscreensaver
-  now owns the screen at 10 minutes idle (`mode: blank` — never a moving hack), configured
-  with `lock: False` and `lockTimeout: 0` so locking is disabled twice over rather than once;
-  `xfce4-screensaver` and `light-locker`, whose locking has no config knob worth trusting, stay
-  purged. UNVERIFIED on this hardware whether the first wake press is actually swallowed —
-  confirm during kiosk setup, and revert to plain `xset s blank` in `kiosk.sh.j2` if it is.
+- **Do not install a screensaver program, and never a locking one.** X's own blanking hands the
+  waking keypress on to the page, so the first press both lights the screen and does what he
+  meant; a screensaver or lock swallows it, and a press that does nothing is exactly the
+  disappointment principle 1 is about — `xset s blank` + `xset dpms` on the Debian kiosk.
+  **Tried once, reverted the same day:** xscreensaver ran a `mode: blank` non-locking
+  screensaver at 10 minutes for about half an hour on 2026-09-26 before the kiosk hard-froze
+  ~27 seconds into a later boot — no kernel panic, no GPU driver error, no clean shutdown
+  logged, journal simply stops. Correlated with xscreensaver's own session daemon on this
+  machine's old (2017, Kabylake) i915 GPU, not proven against it — there was no coredump tool
+  installed to get further than correlation, and this runs a child's device, so the
+  investigation stopped there rather than trying to reproduce it live. `xfce4-screensaver`,
+  `light-locker`, `xscreensaver`, `xscreensaver-data` and `xscreensaver-gl` are all purged.
 - **After 30 minutes idle *and* nothing playing, the laptop suspends.** Squeezelite's own ALSA
   PCM state (`/proc/asound/*/pcm*p/sub0/status`) is the source of truth for "playing", not
   Music Assistant's queue state — a false "not playing" here is exactly the state that must
   never cut a record off mid-track. `platebunken-idle-watch.sh` polls both that and
   `xprintidle` every 30 seconds and calls `systemctl suspend` only when both agree. Waking is
-  any key; autologin plus no locker means the crate is exactly where he left it.
+  any key; autologin plus no locker means the crate is exactly where he left it. Nothing in the
+  xscreensaver freeze implicated this half, so it was kept.
+- **Chromium runs with `--password-store=basic`.** Autologin never supplies a password, so PAM
+  never unlocks the login keyring, and Chromium's default libsecret-backed store asks it to
+  unlock anyway on every start — an "Unlock Login Keyring" dialog nobody is there to answer,
+  stealing input from the crate behind it. Nothing on this kiosk needs an encrypted password
+  store; this keeps Chromium from asking gnome-keyring at all.
 
 ### 4.4 Getting home
 
