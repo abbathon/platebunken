@@ -163,13 +163,37 @@ do not go hunting for a fault that is a decision.
 
 ## 5. Rolling forward and back
 
+**`docker compose pull && docker compose up -d` follows whatever `PLATEBUNKEN_TAG` is set to
+in the host's `.env` — it does not mean "newest release" unless that key is absent or empty.**
+A host's `.env` is written once and then left alone, so a tag pinned during an earlier deploy
+stays pinned: `pull && up -d` against a `.env` still reading `PLATEBUNKEN_TAG=0.3.0` silently
+re-pulls 0.3.0, and the operator believes they shipped whatever is newest. Check what is
+pinned before relying on the comment below:
+
 ```
-PLATEBUNKEN_TAG=0.1.0 docker compose up -d       # a specific release
-docker compose pull && docker compose up -d      # newest release (:latest)
+grep PLATEBUNKEN_TAG .env
 ```
 
-`:latest` follows the newest **semver tag**, never `main`. Pull `:main` deliberately if the
-current commit is wanted.
+To roll forward or back **for good**, edit `.env` itself, then pull and restart:
+
+```
+# .env: PLATEBUNKEN_TAG=0.4.0
+docker compose pull && docker compose up -d      # follows .env's pin — remove the key entirely for :latest
+```
+
+Setting it only on the command line —
+
+```
+PLATEBUNKEN_TAG=0.4.0 docker compose up -d       # recreates the container, does NOT touch .env
+```
+
+— recreates the running container but leaves `.env` exactly as it was. The next plain
+`docker compose up -d` (a reboot, a host restart, anyone re-running the documented command)
+reads `.env` again and silently rolls back to whatever was pinned before. Use this form only
+to try a tag briefly; write the real value to `.env` for anything meant to stick.
+
+`:latest` follows the newest **semver tag**, never `main`, and only when `PLATEBUNKEN_TAG` is
+unset. Pull `:main` deliberately if the current commit is wanted.
 
 To build on the host instead — for a day when the registry is unreachable:
 
