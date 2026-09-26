@@ -13,7 +13,10 @@ POLL_S=30
 is_playing() {
   for f in /proc/asound/card*/pcm*p/sub0/status; do
     [ -f "$f" ] || continue
-    if grep -q '^state: RUNNING' "$f" 2>/dev/null; then
+    # The file's content is the bare state word ("closed", "RUNNING", ...), not "state: X" —
+    # verified on this kernel directly; the "state: " form some docs show is not what's here,
+    # and this check exists specifically to be trusted, not assumed.
+    if grep -qx 'RUNNING' "$f" 2>/dev/null; then
       return 0
     fi
   done
