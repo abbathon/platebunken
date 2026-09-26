@@ -255,7 +255,17 @@ html, body {
   .np { grid-template-columns: minmax(0, 1fr); align-content: center; }
   .np__art { max-width: min(38vh, 100%); }
 }
-.np__art { width: 100%; max-width: min(66vh, 100%); justify-self: center; }
+.np__art { width: 100%; max-width: min(66vh, 100%); justify-self: center; perspective: 900px; }
+/* The now-playing cover only: a mouse/trackpad tilt that follows the pointer, set by
+   main.ts's `attachCoverTilt` as --tilt-x/--tilt-y custom properties. One rule, not two —
+   transforms do not compose across separate rules, only within one declaration's function
+   list, so this has to fold into the existing lift-on-hover rather than add a second one. The
+   grid tiles' plain `.cover:hover` is untouched; more specific selector wins here. */
+@media (hover: hover) {
+  .np__art .cover:hover {
+    transform: translateY(-6px) scale(1.015) rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg));
+  }
+}
 /* `min-width: 0` is load-bearing. A grid column refuses to shrink below its content's
    min-content width, and a track title that cannot wrap makes that width whatever the longest
    title happens to be — so a long title pushed the whole number line out from under the stage's
@@ -509,6 +519,9 @@ html, body {
   min-width: 84px; min-height: 84px; color: var(--ink);
   font-weight: 700; font-size: 28px; line-height: 1;
 }
+/* Same fix as `.btn svg` above, for a bare digit instead of an icon: lifted above `.btn::after`
+   so the button's own face layer stops painting over it. */
+.gate__key-digit { position: relative; z-index: 1; }
 
 /* ── home ─────────────────────────────────────────────────────── */
 .home { position: fixed; left: 22px; bottom: 22px; z-index: 40; }
@@ -634,6 +647,10 @@ html, body {
   .frame { border-color: var(--frame-ring); }
   /* The backdrop simply stops. It carries no information, so nothing is lost with it. */
   #motif * { animation: none !important; }
+  /* Belt and suspenders: attachCoverTilt already refuses to set --tilt-x/--tilt-y in this
+     mode, checked live per pointermove. This is what stops the plain lift-on-hover above it
+     from animating too, since it shares the same transition. */
+  .np__art .cover { transition: none; }
 }
 
 .track[data-focus="1"]:not([aria-current="true"]) {
@@ -771,6 +788,27 @@ html, body {
 .track__fav svg[stroke] [fill="currentColor"] { fill: currentColor; }
 /* On the row that is actually playing the mark would fight the highlight, so it steps back. */
 .track[aria-current="true"] .track__fav { opacity: 0.55; }
+
+/* ── the manual "like" ──────────────────────────────────────────────
+   A second, independently-pressable control beside the passive algorithmic mark above — it
+   cannot live inside `.track` itself, because a second interactive element nested in a
+   `<button>` is invalid HTML and browsers reparent it out. `.track-row` is the `<li>`'s new
+   flex wrapper so `.track` keeps its own grid layout untouched and `.track__like` sits beside
+   it as a full 76px target, present on every row whenever marks are shown at all — same
+   reasoning as `.track__fav`'s reserved column: liking a track must never change any row's
+   width. */
+.track-row { display: flex; align-items: stretch; gap: 6px; }
+.track-row .track { flex: 1 1 auto; min-width: 0; width: auto; }
+.track__like {
+  flex: 0 0 var(--target); width: var(--target);
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: 0; color: var(--ink-dim); cursor: default;
+}
+.track__like svg { display: block; width: 26px; height: 26px; fill: currentColor; }
+.track__like svg[stroke] { fill: none; }
+.track__like svg[stroke] [fill="currentColor"] { fill: currentColor; }
+.track__like[aria-pressed="true"] { color: var(--glow); }
+@media (hover: hover) { .track__like:hover { color: var(--ink); } }
 
 /* ── the mark picker, in settings ─────────────────────────────────── */
 .marks { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; max-width: 420px; }

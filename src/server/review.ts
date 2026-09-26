@@ -17,8 +17,8 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 import {
-  approve, heldForTracks, recentlyRejected, reject, release, reopenRejected, reviewQueue, tracks,
-  waitingToRelease, type QueueEntry, type StoredAlbum,
+  approve, heldForTracks, recentlyRejected, reject, release, reopenRejected, reviewQueue,
+  setRecommended, tracks, waitingToRelease, type QueueEntry, type WaitingAlbum,
 } from "../store/crate.ts";
 import { coverPath } from "../ma/images.ts";
 
@@ -69,6 +69,12 @@ export interface WireWaiting {
   artist: string;
   title: string;
   cover: { sm: string; lg: string } | null;
+  /**
+   * The parent pushing this one to the front of the queue. Only ever meaningful here — once
+   * released there is no queue order left to influence, so this field does not exist on
+   * `WireCandidate` or on anything already in the crate.
+   */
+  recommended: boolean;
 }
 
 export interface WireReview {
@@ -92,11 +98,12 @@ export interface WireReview {
   rejected: WireCandidate[];
 }
 
-const wireWaiting = (a: StoredAlbum): WireWaiting => ({
+const wireWaiting = (a: WaitingAlbum): WireWaiting => ({
   uri: a.uri,
   artist: a.artist || "—",
   title: a.title,
   cover: cover(a.coverProxyId),
+  recommended: a.recommended,
 });
 
 export function wireReview(db: DatabaseSync, profileId: string): WireReview {
@@ -190,4 +197,17 @@ export function reopen(db: DatabaseSync, uri: string): DecideResult {
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
+}
+
+/**
+ * The parent pre-selecting which approved album goes out next. Only ever true for something
+ * still waiting — `setRecommended` refuses a released album, so `ok:false` here means either
+ * the uri is not this profile's, or it is already in the crate and there is nothing left for
+ * the flag to change.
+ */
+export function recommend(db: DatabaseSync, profileId: string, uri: string, on: boolean): DecideResult {
+  if (!setRecommended(db, profileId, uri, on)) {
+    return { ok: false, error: "Albumet er ikke i køen for utgivelse." };
+  }
+  return { ok: true };
 }

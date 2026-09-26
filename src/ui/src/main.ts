@@ -4,7 +4,7 @@
 // was which one a four-year-old could actually drive. It is answered — **A, the wall** — so B
 // and C are gone rather than kept around as options. A codebase that still carries the
 // alternatives after the decision is one nobody trusts the decision of.
-import { enableCoverCache, loadCrate, loadSettings, recordPlay, saveSettings, type Album, type Crate } from "./store";
+import { enableCoverCache, loadCrate, loadSettings, recordFavourite, recordPlay, saveSettings, type Album, type Crate, type Track } from "./store";
 import { markSvg } from "./marks";
 import { coverSvg } from "./cover";
 import { THEMES, applyTheme, emblemSvg, frameEl, setEntryDirection, themeFromUrl, themePicker, type Theme } from "./theme";
@@ -247,32 +247,38 @@ function setTheme(t: Theme): void {
  * The shelves — §4.1.
  *
  * "Separate shelves — new, recent, most-played — are *additional surfaces*, never reorderings
- * of the crate." That is the whole rule. The crate's own order is append-only and untouchable;
- * a shelf is a different window onto the same albums, with its own order and its own cursor.
+ * of the crate." That is still the whole rule, even though the crate's own order is no longer
+ * append-only ON SCREEN (docs/ARCHITECTURE.md §4.1: the grid is alphabetical by artist now).
+ * The internal release order — permanent, append-only, one position per album forever — is
+ * untouched; a shelf is still a different window onto the same albums, with its own order and
+ * its own cursor.
  *
  * Each shelf is capped at one page. A shelf you can get lost in is just a second crate, and
  * the point of a shelf is that it is a short answer to a question — what is new, what did I
  * just play, what do I play most.
  *
- * `new` is the tail of the crate reversed, which is exact rather than approximate: the crate
- * is append-only, so the last albums added are the newest by construction, and the trickle
- * decides what has arrived.
+ * `new` USED to be the tail of the crate reversed, which was exact only because the crate's
+ * own display order was append-only — the last albums added were the newest by construction.
+ * That stopped being true the day the grid became alphabetical: the tail of an alphabetically
+ * sorted array is "whatever sorts last by artist", not "newest". So `new` is now server-
+ * computed from the permanent internal release position (`newlyReleased` in the store, sent as
+ * `shelves.new`), the same way *recent* and *most-played* already are below.
  *
- * *recent* and *most-played* now come from the store, not from page memory. They used to reset
- * on every reload, which on a kiosk that reboots nightly meant both were empty every morning —
- * a rail slot that is permanently inert teaches nothing except that it does not work.
+ * *recent* and *most-played* come from the store, not from page memory. They used to reset on
+ * every reload, which on a kiosk that reboots nightly meant both were empty every morning — a
+ * rail slot that is permanently inert teaches nothing except that it does not work.
  */
 const SHELF_SIZE = PER_PAGE;
 
 function shelfAlbums(shelf: Shelf): (Album | null)[] {
   switch (shelf) {
-    // The crate keeps its gaps. A withdrawn slot stays empty forever, which is what holds
-    // every position after it exactly where he memorised it.
+    // The crate no longer has gaps to keep — see the comment above wireCrate's swap to
+    // crateAlphabetical (src/server/crate.ts). A withdrawn or still-trackless album is simply
+    // absent from this array rather than rendered as an empty slot.
     case "crate":
       return slots();
-    // The shelves do not: a gap there names nothing and answers no question.
     case "new":
-      return albums().slice(-SHELF_SIZE).reverse();
+      return CRATE?.new ?? [];
     case "recent":
       return CRATE?.recent ?? [];
     case "played":
@@ -361,6 +367,37 @@ function withImageFallback(host: HTMLElement, a: Album): void {
   const img = host.querySelector("img");
   if (!img) return;
   img.addEventListener("error", () => { host.innerHTML = coverSvg(a); host.dataset.artFailed = "1"; }, { once: true });
+}
+
+/**
+ * A mouse/trackpad tilt on the now-playing cover, following the pointer.
+ *
+ * `host` is rebuilt fresh on every `render()` — the whole now-playing stage is a new template
+ * each time, and the old one is discarded wholesale by `app.replaceChildren()` — so a listener
+ * attached here dies with it. No manual teardown needed, same reasoning as `withImageFallback`
+ * right above.
+ *
+ * Gated on `pointerType === "mouse"` per event, not on any one-time device check: a touch-
+ * originated `pointermove` always reports `"touch"`, so this can never fire from touch input
+ * regardless of what the input hardware turns out to be. `prefers-reduced-motion` is checked
+ * live on every move for the same reason the CSS media query is live — it stays correct if the
+ * setting changes mid-visit rather than only at attach time.
+ */
+function attachCoverTilt(host: HTMLElement): void {
+  const MAX_DEG = 8;
+  host.addEventListener("pointermove", (e: PointerEvent) => {
+    if (e.pointerType !== "mouse") return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const r = host.getBoundingClientRect();
+    const nx = (e.clientX - r.left) / r.width * 2 - 1;
+    const ny = (e.clientY - r.top) / r.height * 2 - 1;
+    host.style.setProperty("--tilt-x", `${(nx * MAX_DEG).toFixed(2)}deg`);
+    host.style.setProperty("--tilt-y", `${(-ny * MAX_DEG).toFixed(2)}deg`);
+  });
+  host.addEventListener("pointerleave", () => {
+    host.style.setProperty("--tilt-x", "0deg");
+    host.style.setProperty("--tilt-y", "0deg");
+  });
 }
 
 /**
@@ -504,6 +541,20 @@ const play = (album: Album | null | undefined, track = 1) => {
   // mid-browse.
   render();
 };
+
+/**
+ * Set or clear a manual like.
+ *
+ * Optimistic, same pattern as the recent shelf in `play()` above: the in-memory track is the
+ * same object `shown()`/`state.now` already point at, so mutating it in place is enough for
+ * every view that draws it to agree without a re-fetch, and the store write is fire-and-forget
+ * underneath it.
+ */
+function toggleManualFavourite(album: Album, t: Track): void {
+  t.favouriteManual = !t.favouriteManual;
+  recordFavourite(album.uri, t.n, t.favouriteManual);
+  render();
+}
 
 /**
  * Open a sleeve. **Does not start it.**
@@ -657,6 +708,7 @@ function albumView(album: Album, track: number): HTMLElement {
     </div>
   </section>`);
   withImageFallback(root.querySelector("#np-art") as HTMLElement, album);
+  attachCoverTilt(root.querySelector("#np-art") as HTMLElement);
 
   // The number line — §4.2. One straight, evenly spaced column. The geometry carries the
   // measured effect, not the numerals, so this is never a wheel, arc, ring, carousel or grid.
@@ -679,16 +731,30 @@ function albumView(album: Album, track: number): HTMLElement {
      * never reflows: an album he has played to death looks exactly like one he has not, except
      * that two of the rows carry a small shape.
      *
-     * Derived, never declared. There is no "like" button and there must not be one — the
-     * product does four things and refuses the fifth, and a mark he could chase would turn
-     * listening into a game with a score.
+     * Derived, never declared — the algorithmic mark. A second, MANUAL mark now exists
+     * alongside it (`.track__like`, below): a later, deliberate reversal of "there is no like
+     * button and there must not be one", scoped to reach him through the kiosk's own trackpad.
      */
     const fav = t.favourite && state.settings.favouritesShown
       ? `<span class="track__fav">${markSvg(state.settings.favouriteMark)}</span>`
       : "";
-    const row = el(`<li><button class="track" aria-current="${t.n === track}" data-focus="${t.n === state.focusTrack ? 1 : 0}">
+    const row = el(`<li class="track-row"><button class="track" aria-current="${t.n === track}" data-focus="${t.n === state.focusTrack ? 1 : 0}">
       <span class="track__n">${t.n}</span><span class="track__t">${esc(t.title)}</span>${fav}</button></li>`);
-    row.querySelector("button")!.addEventListener("click", () => play(album, t.n));
+    row.querySelector(".track")!.addEventListener("click", () => play(album, t.n));
+
+    /**
+     * The like button is a SIBLING of `.track`, never a child of it: a second independently-
+     * clickable control cannot nest inside a `<button>` — invalid HTML, and browsers reparent
+     * it out from under you. Present on every row whenever marks are shown at all, liked or
+     * not, for the same reason `.track__fav`'s column is reserved unconditionally: liking a
+     * track must never shift any row's width.
+     */
+    if (state.settings.favouritesShown) {
+      const liked = t.favouriteManual;
+      const like = el(`<button class="track__like" aria-pressed="${liked}" aria-label="Lik">${markSvg(state.settings.manualFavouriteMark)}</button>`);
+      like.addEventListener("click", () => toggleManualFavourite(album, t));
+      row.append(like);
+    }
     list.append(row);
   }
 
@@ -996,6 +1062,16 @@ function onKey(e: KeyboardEvent): void {
     return;
   }
 
+  /**
+   * The admin view is handled ENTIRELY separately, before the crate/album switch below, and
+   * that ordering is load-bearing. It used to fall THROUGH the switch first — arrows and Space
+   * have their own `case`s there, unconditional on `where` — so while the settings panel was
+   * open, arrow keys were actually moving the real speaker volume and Space was actually
+   * calling `togglePlay()`. Only bare digits fell through far enough to reach the intended
+   * admin-only handling, and nothing consumed them there either. See `handleAdminKey`.
+   */
+  if (state.view.name === "admin") { handleAdminKey(e); return; }
+
   const where = state.view.name;
   const now = state.now;
 
@@ -1037,14 +1113,6 @@ function onKey(e: KeyboardEvent): void {
       return;
   }
 
-  // Settings takes no other key: its own controls are the only way through it, and the arrow
-  // keys must not steer the crate underneath a screen the child cannot read.
-  if (state.view.name === "admin") {
-    if (/^[0-9]$/.test(e.key)) return;
-    e.preventDefault();
-    return;
-  }
-
   // Volume, across layouts. On a Norwegian keyboard "+" and "-" are both unshifted keys,
   // so e.key matches directly; NumpadAdd/Subtract and the media keys cover a keypad and
   // anything with dedicated volume buttons. Whichever the final hardware has, it works.
@@ -1054,6 +1122,75 @@ function onKey(e: KeyboardEvent): void {
 
 const VOL_UP = new Set(["+", "=", "NumpadAdd", "AudioVolumeUp", "PageUp"]);
 const VOL_DOWN = new Set(["-", "_", "NumpadSubtract", "AudioVolumeDown", "PageDown"]);
+
+/**
+ * Keyboard handling for the settings panel and its gate, entirely separate from the crate's
+ * own switch above.
+ *
+ * Unlocked (the panel proper): Tab, Enter, Space and the arrow keys are left alone — no
+ * `preventDefault`. Every control in `admin.ts`'s panel is a plain native `<button>` or
+ * `<input type="range">` with no keyboard handling of its own, so simply not swallowing these
+ * keys is what makes Tab-focus, Enter/Space-activation and arrow-adjustment on a slider work
+ * at all, for the first time.
+ *
+ * Locked (the gate): there is no native multi-key widget to defer to — twelve independent
+ * buttons in a 3-column grid — so digits and a roving 2D focus are hand-rolled here, calling
+ * straight into the same DOM the gate's own click handlers use.
+ */
+function handleAdminKey(e: KeyboardEvent): void {
+  const navKeys = new Set(["Tab", "Enter", " ", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
+
+  if (!state.admin.unlocked) {
+    if (/^[0-9]$/.test(e.key)) {
+      e.preventDefault();
+      (document.querySelector(`.gate__pad button[aria-label="${e.key}"]`) as HTMLButtonElement | null)?.click();
+      return;
+    }
+    if (e.key === "Tab" || e.key === "Enter" || e.key === " ") return;   // native focus/activation
+    if (e.key.startsWith("Arrow")) { e.preventDefault(); moveGateFocus(e.key); return; }
+    e.preventDefault();
+    return;
+  }
+
+  if (navKeys.has(e.key)) return;   // native: Tab order, button activation, slider adjustment
+  e.preventDefault();
+}
+
+/**
+ * Roving focus over the gate's 3-column button grid. Native Tab order already walks it in
+ * reading order — row-major, which happens to already agree with the 2D layout here — but
+ * gives no up/down semantics at all, since these are twelve independent buttons rather than a
+ * native radio group. Clamped, not wrapped, at the grid's edges: the same "silent stop" the
+ * crate's own grid navigation uses.
+ *
+ * Indexed over ALL twelve cells, blank filler `<span>`s included — `.gate__pad`'s CSS lays it
+ * out `repeat(3, ...)`, so row/col math only agrees with what is actually on screen when the
+ * two blanks (after 9, and after 0) stay in the array. Landing on one steps one further in the
+ * same direction rather than sitting on a cell that cannot take focus.
+ */
+function moveGateFocus(key: string): void {
+  const pad = document.querySelector(".gate__pad");
+  if (!pad) return;
+  const cells = Array.from(pad.children) as HTMLElement[];
+  const cols = 3;
+  const isKey = (el: HTMLElement | undefined): el is HTMLButtonElement => !!el && el.tagName === "BUTTON";
+
+  const current = cells.indexOf(document.activeElement as HTMLElement);
+  let i = current < 0 ? cells.findIndex(isKey) : current;
+  if (current < 0) { (cells[i] as HTMLButtonElement | undefined)?.focus(); return; }
+
+  const step = key === "ArrowLeft" ? -1 : key === "ArrowRight" ? 1 : key === "ArrowUp" ? -cols : cols;
+  const sameRow = (key === "ArrowLeft" || key === "ArrowRight");
+  do {
+    const row = Math.floor(i / cols), col = i % cols;
+    const next = i + step;
+    if (next < 0 || next >= cells.length) return;                          // stop at the ends
+    if (sameRow && Math.floor(next / cols) !== row) return;                // stop at the row edge
+    if (!sameRow && next % cols !== col) return;                           // (defensive; cols=3 keeps this true)
+    i = next;
+  } while (!isKey(cells[i]));   // skip a blank filler cell, one more step the same way
+  (cells[i] as HTMLButtonElement).focus();
+}
 
 function moveTrack(delta: number): void {
   const n = state.now?.album.tracks.length ?? 0;

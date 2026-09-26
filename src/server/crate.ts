@@ -15,7 +15,8 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 import {
-  allTracks, counts, crate, favouriteTracks, mostPlayed, recentlyPlayed, type StoredAlbum,
+  allTracks, counts, crateAlphabetical, favouriteTracks, manualFavourites, mostPlayed,
+  newlyReleased, recentlyPlayed, type StoredAlbum,
 } from "../store/crate.ts";
 import { coverPath } from "../ma/images.ts";
 
@@ -34,11 +35,17 @@ export interface WireTrack {
   title: string;
   uri: string | null;
   /**
-   * A track he keeps choosing. Derived from the play log, never declared — there is no "like"
-   * button and there must not be one, because the product does four things and refuses the
-   * fifth. The page draws a mark beside it; the mark never reorders anything.
+   * A track he keeps choosing. Derived from the play log, never declared — the ALGORITHMIC
+   * mark. The page draws a mark beside it; the mark never reorders anything.
    */
   favourite: boolean;
+  /**
+   * A track he was told is a favourite — the MANUAL mark, set through a tap on the kiosk's own
+   * trackpad or by a parent. A deliberate, later override of the "never declared" rule above;
+   * kept as a second field rather than folded into `favourite` so the page can draw the two
+   * differently and neither can be mistaken for the other.
+   */
+  favouriteManual: boolean;
 }
 
 export interface WireAlbum {
@@ -55,23 +62,26 @@ export interface WireAlbum {
 }
 
 export interface WireSlot {
-  position: number;
   /**
-   * null is a withdrawn slot and renders as an empty tile. **The page must not compact this
-   * array.** The gap is the point: it is what keeps every position after it exactly where the
-   * child left it, which is principle 2 and the reason the crate is append-only at all.
+   * A plain sequential index into `slots` — the grid's display order, alphabetical by artist
+   * (docs/ARCHITECTURE.md §4.1). No longer the database `position`: that value is still
+   * assigned append-only and still permanent (§5.1), it has just stopped being what the child
+   * sees. Nothing on the page reads this as anything but an array index.
    */
-  album: WireAlbum | null;
+  position: number;
+  album: WireAlbum;
 }
 
 export interface WireCrate {
   slots: WireSlot[];
   /**
-   * The *recent* and *most-played* shelves, as uris into `slots`. Sent as order rather than
-   * as albums so an album cannot arrive on a shelf without being in the crate first — the
-   * gate holds on the way out as well as on the way in.
+   * The *new*, *recent* and *most-played* shelves, as uris into `slots`. Sent as order rather
+   * than as albums so an album cannot arrive on a shelf without being in the crate first — the
+   * gate holds on the way out as well as on the way in. `new` is server-computed from the
+   * permanent internal release position (`newlyReleased`), not from the crate's own now-
+   * alphabetical array order — see §4.1.
    */
-  shelves: { recent: string[]; played: string[] };
+  shelves: { new: string[]; recent: string[]; played: string[] };
   /** For the parent's settings screen. The child's interface never shows a number. */
   counts: ReturnType<typeof counts>;
 }
@@ -91,36 +101,37 @@ const wire = (a: StoredAlbum, tracks: WireTrack[]): WireAlbum => ({
 export function wireCrate(db: DatabaseSync, profileId: string): WireCrate {
   const tracksByUri = allTracks(db, profileId);
   const favourites = favouriteTracks(db, profileId);
+  const manual = manualFavourites(db, profileId);
 
-  const slots = crate(db, profileId).map((s): WireSlot => {
-    if (!s.album) return { position: s.position, album: null };
-    const stored = tracksByUri.get(s.album.uri) ?? [];
-
-    /**
-     * An album with no number line is not shown at all.
-     *
-     * Until `src/server/tracks.ts` existed, only the seed cached tracks — so every album
-     * approved at /admin landed here with none, and opening one told a four-year-old in
-     * English that Music Assistant had returned no tracks. A record that opens onto a
-     * sentence he cannot read is worse than no record.
-     *
-     * It becomes an EMPTY SLOT, which is the same thing a withdrawn album becomes, and for
-     * the same reason: the position is spent and permanent, so hiding the album must not be
-     * allowed to move anything after it. `release()` now refuses to place a trackless album
-     * in the first place, so this path only ever covers the ones released before that rule
-     * existed — and it heals itself, because the moment the sweep caches the tracks the
-     * cover appears in the slot it always had.
-     */
-    if (stored.length === 0) return { position: s.position, album: null };
-
-    const fav = favourites.get(s.album.uri);
-    const tracks = stored.map((t) => ({ ...t, favourite: fav?.has(t.n) ?? false }));
-    return { position: s.position, album: wire(s.album, tracks) };
-  });
+  /**
+   * An album with no number line is not shown at all.
+   *
+   * Until `src/server/tracks.ts` existed, only the seed cached tracks — so every album
+   * approved at /admin landed here with none, and opening one told a four-year-old in
+   * English that Music Assistant had returned no tracks. `release()` now refuses to place a
+   * trackless album in the first place, so this only ever covers the ones released before
+   * that rule existed — and it heals itself, because the moment the sweep caches the tracks
+   * the album simply appears in its alphabetical place. Under alphabetical order there is no
+   * fixed slot to leave empty for it, so it is filtered out rather than drawn as a gap.
+   */
+  const slots: WireSlot[] = crateAlphabetical(db, profileId)
+    .map((a): WireSlot | null => {
+      const stored = tracksByUri.get(a.uri) ?? [];
+      if (stored.length === 0) return null;
+      const fav = favourites.get(a.uri);
+      const man = manual.get(a.uri);
+      const tracks = stored.map((t) => ({
+        ...t, favourite: fav?.has(t.n) ?? false, favouriteManual: man?.has(t.n) ?? false,
+      }));
+      return { position: 0, album: wire(a, tracks) };
+    })
+    .filter((s): s is WireSlot => !!s)
+    .map((s, i) => ({ ...s, position: i }));
 
   return {
     slots,
     shelves: {
+      new: newlyReleased(db, profileId, SHELF_SIZE),
       recent: recentlyPlayed(db, profileId, SHELF_SIZE),
       played: mostPlayed(db, profileId, SHELF_SIZE).map((p) => p.uri),
     },

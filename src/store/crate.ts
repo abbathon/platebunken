@@ -47,6 +47,16 @@ export interface CrateSlot {
   album: StoredAlbum | null;
 }
 
+/**
+ * An approved album not yet in the crate, with the one fact about it that belongs to
+ * `approved` rather than to the album itself — whether the parent has pushed it toward the
+ * front of the release queue. Not on `StoredAlbum`: that type mirrors the `album` table, which
+ * knows nothing about a candidacy's position in the queue.
+ */
+export interface WaitingAlbum extends StoredAlbum {
+  recommended: boolean;
+}
+
 export interface QueueEntry {
   album: StoredAlbum;
   source: CandidateSource;
@@ -280,10 +290,10 @@ export function recentlyRejected(db: DatabaseSync, limit = 10): QueueEntry[] {
  * must agree exactly, and the cheapest way to guarantee that is for them to share the text.
  */
 const RELEASABLE = `
-  SELECT uri FROM approved
+  SELECT uri, recommended FROM approved
    WHERE profile_id = ? AND position IS NULL
      AND EXISTS (SELECT 1 FROM track t WHERE t.album_uri = approved.uri)
-   ORDER BY approved_at ASC, rowid ASC LIMIT ?`;
+   ORDER BY recommended DESC, approved_at ASC, rowid ASC LIMIT ?`;
 
 /**
  * What is approved and waiting, in the exact order the trickle will release it.
@@ -294,9 +304,12 @@ const RELEASABLE = `
  * absent here: it is not going to come out, so promising it would be a lie. `heldForTracks()`
  * is where the parent is told about those instead.
  */
-export function waitingToRelease(db: DatabaseSync, profileId: string, limit = 20): StoredAlbum[] {
-  const rows = db.prepare(RELEASABLE).all(profileId, limit) as { uri: string }[];
-  return rows.map((r) => getAlbum(db, r.uri)!).filter(Boolean);
+export function waitingToRelease(db: DatabaseSync, profileId: string, limit = 20): WaitingAlbum[] {
+  const rows = db.prepare(RELEASABLE).all(profileId, limit) as { uri: string; recommended: number }[];
+  return rows.map((r) => {
+    const a = getAlbum(db, r.uri);
+    return a ? { ...a, recommended: r.recommended === 1 } : null;
+  }).filter((a): a is WaitingAlbum => !!a);
 }
 
 /**
@@ -304,16 +317,36 @@ export function waitingToRelease(db: DatabaseSync, profileId: string, limit = 20
  *
  * Shown on /admin so the parent is never left wondering why a ✓ produced nothing. An album
  * that stays here for days is a real signal — usually a provider that has dropped it — and
- * the answer is to look, not to let it through.
+ * the answer is to look, not to let it through. Sorted by `recommended` too, same as the
+ * releasable queue: a recommended-but-trackless album should visibly jump this list, and it
+ * heals into first position automatically once its tracks land.
  */
-export function heldForTracks(db: DatabaseSync, profileId: string, limit = 20): StoredAlbum[] {
+export function heldForTracks(db: DatabaseSync, profileId: string, limit = 20): WaitingAlbum[] {
   const rows = db.prepare(
-    `SELECT uri FROM approved
+    `SELECT uri, recommended FROM approved
       WHERE profile_id = ? AND position IS NULL
         AND NOT EXISTS (SELECT 1 FROM track t WHERE t.album_uri = approved.uri)
-      ORDER BY approved_at ASC, rowid ASC LIMIT ?`,
-  ).all(profileId, limit) as { uri: string }[];
-  return rows.map((r) => getAlbum(db, r.uri)!).filter(Boolean);
+      ORDER BY recommended DESC, approved_at ASC, rowid ASC LIMIT ?`,
+  ).all(profileId, limit) as { uri: string; recommended: number }[];
+  return rows.map((r) => {
+    const a = getAlbum(db, r.uri);
+    return a ? { ...a, recommended: r.recommended === 1 } : null;
+  }).filter((a): a is WaitingAlbum => !!a);
+}
+
+/**
+ * The parent pushing one approved-but-unreleased album to the front of the queue.
+ *
+ * Restricted to `position IS NULL`: once released there is no queue order left to influence,
+ * and a toggle that visibly does nothing is the exact bug `tricklePerDay` and the source
+ * toggles already taught this codebase to refuse. Returns false (not found, or already
+ * released) so the caller can say so rather than pretend it worked.
+ */
+export function setRecommended(db: DatabaseSync, profileId: string, uri: string, on: boolean): boolean {
+  const out = db.prepare(
+    `UPDATE approved SET recommended = ? WHERE profile_id = ? AND uri = ? AND position IS NULL`,
+  ).run(on ? 1 : 0, profileId, uri);
+  return Number(out.changes) > 0;
 }
 
 /**
@@ -334,7 +367,7 @@ export function release(db: DatabaseSync, profileId: string, limit: number, at: 
   // RELEASABLE, not every waiting row: an album with no cached track list must not be given
   // a permanent position. rowid breaks the tie, not uri — a batch approved inside the same
   // millisecond must enter the crate in the order the parent approved it, not alphabetically.
-  const due = db.prepare(RELEASABLE).all(profileId, limit) as { uri: string }[];
+  const due = db.prepare(RELEASABLE).all(profileId, limit) as { uri: string; recommended: number }[];
   if (due.length === 0) return [];
 
   const t = at;
@@ -381,6 +414,46 @@ export function crate(db: DatabaseSync, profileId: string): CrateSlot[] {
     slots.push({ position, album: r.withdrawn_at ? null : toAlbum(r) });
   }
   return slots;
+}
+
+/**
+ * The crate, alphabetical by artist — what the child's grid actually displays.
+ *
+ * `crate()` above is untouched and still the append-only, position-ordered truth `release()`
+ * and the triggers reason about; this is a second, independent read of the same rows for a
+ * different purpose. There is no gap-padding here and no `position` in the result, because
+ * neither means anything under alphabetical order: a withdrawn or still-trackless album simply
+ * is not a row a four-year-old can open, so it is excluded rather than rendered as a hole in a
+ * layout that no longer has fixed holes to begin with.
+ *
+ * `position` is still assigned append-only, is still permanent, and still drives which album
+ * releases before which — see `newlyReleased()`. It has stopped being what the child sees, not
+ * stopped being real.
+ */
+export function crateAlphabetical(db: DatabaseSync, profileId: string): StoredAlbum[] {
+  const rows = db.prepare(
+    `SELECT a.* FROM approved p JOIN album a ON a.uri = p.uri
+      WHERE p.profile_id = ? AND p.position IS NOT NULL AND p.withdrawn_at IS NULL
+      ORDER BY a.artist COLLATE NOCASE ASC, a.title COLLATE NOCASE ASC`,
+  ).all(profileId) as Record<string, unknown>[];
+  return rows.map(toAlbum);
+}
+
+/**
+ * The most recently released albums, newest first — feeds the *new* shelf.
+ *
+ * Used to be derived on the client as "the tail of the crate, reversed", which was exact only
+ * because the crate's own display order was append-only. Now that the grid is alphabetical
+ * (`crateAlphabetical`), that derivation would return whichever albums happen to sort last by
+ * artist — not what is new at all. `position` still only ever increases, so `ORDER BY position
+ * DESC` is "newest release" independent of how the grid chooses to draw the crate.
+ */
+export function newlyReleased(db: DatabaseSync, profileId: string, limit: number): string[] {
+  return (db.prepare(
+    `SELECT uri FROM approved
+      WHERE profile_id = ? AND position IS NOT NULL AND withdrawn_at IS NULL
+      ORDER BY position DESC LIMIT ?`,
+  ).all(profileId, limit) as { uri: string }[]).map((r) => r.uri);
 }
 
 /** Take an album back. The slot stays, and stays empty, forever. */
@@ -555,12 +628,13 @@ export const FAVOURITE_MIN_PLAYS = 3;
 export const FAVOURITE_SHARE_OF_TOP = 0.5;
 
 /**
- * The tracks he keeps choosing, per album.
+ * The tracks he keeps choosing, per album — the ALGORITHMIC mark.
  *
- * Derived from behaviour and never declared. The product does four things and refuses the
- * fifth — there is no "like" button, there must not be one, and a mark he could chase would
- * turn listening into a game with a score. This is only ever a description of what he already
- * did, which is why it is safe to show him.
+ * Derived from behaviour, never declared here. This was once the product's only mark, on the
+ * theory that a declared "like" would turn listening into a game with a score. The parent has
+ * since overridden that for a second, MANUAL mark (`manualFavourites`, below) — this function
+ * and its reasoning are otherwise unchanged: it is still only ever a description of what he
+ * already did, and it is still never wired to anything he can press.
  *
  * Returns album uri -> the set of track numbers to mark. An album with no qualifying track is
  * absent rather than present-and-empty, so callers cannot accidentally render an empty mark.
@@ -590,6 +664,56 @@ export function favouriteTracks(db: DatabaseSync, profileId: string): Map<string
     if (marked.length) out.set(uri, new Set(marked));
   }
   return out;
+}
+
+/**
+ * The tracks he has manually liked, per album — the MANUAL mark.
+ *
+ * Same shape as `favouriteTracks` on purpose, so both can be merged onto a track the same way.
+ * Unlike that one, this is declared rather than derived: it exists because the parent decided
+ * the risk named in `favouriteTracks`'s comment was worth taking. Scope, deliberately narrow —
+ * it reaches the child through the kiosk's own trackpad, and it is not wired to anything else
+ * (see `setManualFavourite` and `src/server/scrobble.ts`).
+ */
+export function manualFavourites(db: DatabaseSync, profileId: string): Map<string, Set<number>> {
+  const rows = db.prepare(
+    `SELECT album_uri, track_n FROM manual_favourite WHERE profile_id = ?`,
+  ).all(profileId) as { album_uri: string; track_n: number }[];
+  const out = new Map<string, Set<number>>();
+  for (const r of rows) {
+    let set = out.get(r.album_uri);
+    if (!set) out.set(r.album_uri, (set = new Set()));
+    set.add(Number(r.track_n));
+  }
+  return out;
+}
+
+/**
+ * Set or clear a manual like. A preference, not a record of what happened, so clearing it
+ * deletes the row rather than marking it withdrawn — there is nothing here worth keeping
+ * evidence of once he changes his mind, unlike a play or a crate position.
+ *
+ * Gated on crate membership, same reasoning as `recordPlay`: "the gate holds on the way out
+ * too." An album that is not released, or was withdrawn, has no business being likeable.
+ */
+export function setManualFavourite(
+  db: DatabaseSync, profileId: string, albumUri: string, trackN: number, on: boolean,
+): boolean {
+  const inCrate = db.prepare(
+    `SELECT 1 FROM approved WHERE profile_id = ? AND uri = ? AND position IS NOT NULL AND withdrawn_at IS NULL`,
+  ).get(profileId, albumUri);
+  if (!inCrate) return false;
+  if (on) {
+    db.prepare(
+      `INSERT INTO manual_favourite (profile_id, album_uri, track_n, set_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(profile_id, album_uri, track_n) DO NOTHING`,
+    ).run(profileId, albumUri, trackN, now());
+  } else {
+    db.prepare(
+      `DELETE FROM manual_favourite WHERE profile_id = ? AND album_uri = ? AND track_n = ?`,
+    ).run(profileId, albumUri, trackN);
+  }
+  return true;
 }
 
 /* ── settings that outlive a reboot ────────────────────────────────────── */

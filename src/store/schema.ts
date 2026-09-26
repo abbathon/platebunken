@@ -213,4 +213,30 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (kind, key)
   ) STRICT;
   `,
+
+  /* v5 ─────────────────────────────────────────────────────────────────── */ `
+  -- A manual "like", per track, per profile. The product's original rule — no like button,
+  -- ever, because a mark he could chase turns listening into a game with a score — is
+  -- overridden here on purpose. This is a PREFERENCE, not a record of what happened, which is
+  -- why it is deleted on toggle-off rather than append-only like play or approved: there is
+  -- nothing here worth keeping evidence of once he changes his mind.
+  --
+  -- Profile-scoped like play, not global like track: a second child (schema v1's profile
+  -- table) must get his own likes on a shared record, not his sibling's.
+  CREATE TABLE manual_favourite (
+    profile_id TEXT NOT NULL REFERENCES profile(id),
+    album_uri  TEXT NOT NULL REFERENCES album(uri) ON DELETE CASCADE,
+    track_n    INTEGER NOT NULL,
+    set_at     TEXT NOT NULL,
+    PRIMARY KEY (profile_id, album_uri, track_n)
+  ) STRICT;
+
+  -- The parent pre-selecting which approved album goes out NEXT — a different actor (parent,
+  -- not child) and a different granularity (a whole record, not one track) from the table
+  -- above. It only ever changes which unreleased row release() picks first: restricted in
+  -- application code to rows where position IS NULL, because once a position is spent there
+  -- is nothing left to influence, and a flag nothing reads is the toggle-that-does-nothing bug
+  -- this codebase has already shipped twice.
+  ALTER TABLE approved ADD COLUMN recommended INTEGER NOT NULL DEFAULT 0 CHECK (recommended IN (0,1));
+  `,
 ];

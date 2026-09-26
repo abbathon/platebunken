@@ -11,7 +11,7 @@
  *
  * Three things hold the rule, and each is tested here:
  *   - `release()` will not spend a permanent position on a trackless album  (store)
- *   - `wireCrate` draws an already-released one as an empty slot             (crate.ts)
+ *   - `wireCrate` omits an already-released one from the grid entirely      (crate.ts)
  *   - `sweepTracks` fills the list in, after which both undo themselves      (this module)
  *
  * The MassClient is a stand-in. What is being tested is which albums are asked about, in
@@ -140,10 +140,10 @@ test("waitingToRelease promises only what release will actually produce", () => 
 
 /* ── the crate hides what slipped through before the rule existed ──────── */
 
-test("an album already released without tracks is drawn as an empty slot", () => {
-  // Eleven of these existed in the real store when this was found. The slot is spent and
-  // permanent, so the album cannot be moved out of the way — it is hidden in place, exactly
-  // as a withdrawn album is, and every position after it stays where the child memorised it.
+test("an album already released without tracks is omitted from the grid entirely", () => {
+  // Eleven of these existed in the real store when this was found. Under the alphabetical
+  // display order (§4.1) there is no fixed slot left to leave empty for it — it is simply not
+  // drawn, the same way a withdrawn album is not, and it heals the moment its tracks arrive.
   const db = store();
   const a = approveTrackless(db, 1);
   const b = album(2);
@@ -157,26 +157,24 @@ test("an album already released without tracks is drawn as an empty slot", () =>
   release(db, KID, 1);
 
   const wire = wireCrate(db, KID);
-  assert.equal(wire.slots.length, 2);
-  assert.equal(wire.slots[0]!.album, null, "no cover for a record that opens onto nothing");
-  assert.equal(wire.slots[1]!.album!.uri, b.uri);
-  assert.equal(wire.slots[1]!.position, 1, "and the one behind it has not moved");
-  assert.equal(counts(db, KID).silentSlots, 1);
+  assert.equal(wire.slots.length, 1, "the trackless album is not drawn at all, not as a gap");
+  assert.equal(wire.slots[0]!.album.uri, b.uri);
+  assert.equal(counts(db, KID).silentSlots, 1, "still counted, even though nothing is drawn for it");
 });
 
-test("the hidden album reappears in its own slot the moment its tracks arrive", () => {
+test("the hidden album reappears the moment its tracks arrive", () => {
   const db = store();
   const a = approveTrackless(db, 1);
   db.prepare(`UPDATE approved SET position = 0, released_at = ? WHERE profile_id = ? AND uri = ?`)
     .run(new Date().toISOString(), KID, a.uri);
-  assert.equal(wireCrate(db, KID).slots[0]!.album, null);
+  assert.equal(wireCrate(db, KID).slots.length, 0, "nothing to draw yet");
 
   setTracks(db, a.uri, [{ n: 1, title: "A1" }, { n: 2, title: "A2" }]);
 
-  const slot = wireCrate(db, KID).slots[0]!;
-  assert.equal(slot.position, 0, "the same position it always had");
-  assert.equal(slot.album!.uri, a.uri);
-  assert.equal(slot.album!.tracks.length, 2);
+  const slots = wireCrate(db, KID).slots;
+  assert.equal(slots.length, 1);
+  assert.equal(slots[0]!.album.uri, a.uri);
+  assert.equal(slots[0]!.album.tracks.length, 2);
   assert.equal(counts(db, KID).silentSlots, 0);
 });
 

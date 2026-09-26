@@ -17,8 +17,10 @@ export type Track = {
   n: number;
   title: string;
   uri: string | null;
-  /** A track he keeps choosing. Derived from the play log — never declared, never a button. */
+  /** A track he keeps choosing. Derived from the play log — the algorithmic mark. */
   favourite: boolean;
+  /** A track he was told is a favourite, through a tap or from admin — the manual mark. */
+  favouriteManual: boolean;
 };
 
 export type Album = {
@@ -47,6 +49,7 @@ export type Album = {
  */
 export type Crate = {
   slots: (Album | null)[];
+  new: Album[];
   recent: Album[];
   played: Album[];
 };
@@ -81,7 +84,8 @@ const toAlbum = (a: any): Album => ({
   cover: a.cover ?? null,
   ...seed(a.uri),
   tracks: (a.tracks ?? []).map((t: any) => ({
-    n: t.n, title: t.title, uri: t.uri ?? null, favourite: !!t.favourite,
+    n: t.n, title: t.title, uri: t.uri ?? null,
+    favourite: !!t.favourite, favouriteManual: !!t.favouriteManual,
   })),
 });
 
@@ -100,6 +104,7 @@ export async function loadCrate(): Promise<Crate> {
 
   return {
     slots,
+    new: pick(data.shelves?.new ?? []),
     recent: pick(data.shelves?.recent ?? []),
     played: pick(data.shelves?.played ?? []),
   };
@@ -118,6 +123,19 @@ export function recordPlay(uri: string, track?: number): void {
     // not merely that the album was on.
     body: JSON.stringify({ uri, track }),
   }).catch((e) => console.warn(`[played] ${(e as Error).message}`));
+}
+
+/**
+ * Set or clear a manual like. Fire-and-forget, like `recordPlay` — the caller already updates
+ * its own in-memory copy optimistically, and a lost write here is a mark that reverts on the
+ * next crate fetch, not a broken screen.
+ */
+export function recordFavourite(uri: string, track: number, on: boolean): void {
+  void fetch("/api/favourite", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ uri, track, on }),
+  }).catch((e) => console.warn(`[favourite] ${(e as Error).message}`));
 }
 
 /* ── settings ──────────────────────────────────────────────────────────── */

@@ -12,10 +12,11 @@
  * favourites out of autoplay. `listens.ts` keeps them distinct precisely so both can be right.
  *
  * **Loved feedback is never submitted.** `POST /1/feedback/recording-feedback` exists, and
- * this product will not call it. Nothing here lets the child declare a favourite — favourites
- * are *derived* from play counts — so submitting one would be putting a synthetic opinion in
- * someone else's name on a public account. ARCHITECTURE.md §5, and the product does four
- * things and refuses the fifth.
+ * this product will not call it. The algorithmic favourite mark is still *derived* from play
+ * counts, and submitting one would be putting a synthetic opinion in someone else's name on a
+ * public account. This holds even now that a MANUAL like exists (`manual_favourite`, a later,
+ * deliberate override elsewhere) — a four-year-old's tap is exactly the kind of opinion that
+ * must not end up on a public ListenBrainz account either. Do not "helpfully" close this loop.
  *
  * ## The account, and what is public
  *

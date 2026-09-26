@@ -250,8 +250,14 @@ Four verbs, plus two toggles. Nothing else exists.
   top of the previous one is a *scrub*, not a flip — he is holding the key down to travel — and
   cuts straight through, because replaying the sweep would leave the crate permanently
   half-faded while he moves.
-- **Append-only order.** New albums are appended, never inserted. Position `2-3` is the same album
-  forever.
+- **Append-only order, internally.** New albums are appended, never inserted, and position `2-3`
+  is the same album forever — as a fact about the store (§5.1), not as a claim about the screen
+  any more. The grid he actually sees is now **alphabetical by artist**, chosen for browsability
+  once "album-driven" mattered more than "position is memorised" to the person building this.
+  Position still exists, is still permanent, and still decides which approved album releases
+  before which; it has stopped being what is drawn. A withdrawn or still-trackless album is
+  simply absent from the alphabetical list rather than left as an empty tile at a fixed slot —
+  there is no fixed slot left to leave empty for it.
 - **An arrow on each side of the covers, pointing the way it takes you.** This replaced two
   things: a row of one pip per page, and then a pair of crate-depth rails that stood where the
   arrows stand now.
@@ -283,9 +289,12 @@ Four verbs, plus two toggles. Nothing else exists.
   leaving the crate to look at what is new and coming back does not cost him his place.
 
   `recent` and `most-played` are built from what he played and from nothing else — there is no
-  separate tracking. `new` is the tail of the crate reversed, which is exact rather than
-  approximate: the crate is append-only, so the last albums added are the newest by
-  construction, and the trickle decides what has arrived.
+  separate tracking. `new` USED to be the tail of the crate reversed, exact only because the
+  crate's own display order was append-only — the last albums added were the newest by
+  construction. That stopped being true the day the grid went alphabetical: the tail of an
+  alphabetically sorted list is "whatever sorts last by artist", not "newest". `new` is now
+  server-computed straight from the permanent internal release position instead (`position DESC`
+  — see §5.1), independent of how the grid chooses to draw the crate.
 
   **A shelf with nothing on it keeps its slot and goes inert** rather than disappearing. A rail
   that grew as shelves filled would move marks he had already learned, and spatial position is
@@ -584,6 +593,8 @@ crate without a person having seen the album first.
   cache; an album that opens onto an empty track list is not that. A re-tag replaces the rows
   wholesale, because freezing the first answer would leave the number line disagreeing with what
   actually plays. Track numbers belong to the record; only **positions** belong to the child.
+  A position, once given, still never changes — but as of §4.1 it is a fact the store keeps
+  for release ordering, not a description of where the child sees the album on screen.
 
   **Who fills it, and what happens when it is empty.** For a long time the answer to the first
   question was "only `pb seed`". The curation worker wrote the album and the candidacy and
@@ -597,9 +608,9 @@ crate without a person having seen the album first.
     as the trickle and **before** it. An album MA cannot answer for stays on the list and is
     asked again: MA syncs, so "no tracks today" is not "no tracks".
   - `release()` refuses to give a **permanent** position to an album with no cached list, and
-    `wireCrate` draws an already-released one as an **empty slot** — the same thing a withdrawn
-    album becomes, for the same reason. Hiding it must not move anything after it, and it heals
-    itself: the cover appears in the slot it always had the moment the sweep lands.
+    `wireCrate` simply omits an already-released one from the alphabetical grid, the same as a
+    withdrawn album — there is no fixed slot left to draw as empty under §4.1's alphabetical
+    order. It heals itself either way: the cover appears the moment the sweep lands.
 
   The parent is told, at /admin and at boot. A ✓ that produces nothing and says nothing is the
   same silent failure in a different costume.

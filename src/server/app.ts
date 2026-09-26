@@ -16,9 +16,9 @@ import { config, maConfigured } from "./config.ts";
 import { body, json, routeOf } from "./http.ts";
 import { staticServer } from "./static.ts";
 import { wireCrate } from "./crate.ts";
-import { recordPlay } from "../store/crate.ts";
+import { recordPlay, setManualFavourite } from "../store/crate.ts";
 import { save, wireSettings } from "./settings.ts";
-import { decide, releaseNow, reopen, wireReview } from "./review.ts";
+import { decide, recommend, releaseNow, reopen, wireReview } from "./review.ts";
 import { adminHtml } from "./admin.ts";
 import { cacheOne } from "./tracks.ts";
 import * as speaker from "./speaker.ts";
@@ -111,6 +111,21 @@ export function createApp(db: DatabaseSync) {
         });
       }
 
+      /**
+       * A manual like, child-facing, no gate. Same shape as `/api/played`: a preference, not
+       * a decision, so a malformed or failed request is a 400/500, never a reason to touch
+       * anything else on the page. `setManualFavourite` gates on crate membership itself, so
+       * this route does not need to check that a second time.
+       */
+      if (route === "/api/favourite" && method === "POST") {
+        const payload = await body(req);
+        const uri = String(payload.uri ?? "");
+        const trackN = Number(payload.track);
+        if (!uri || !Number.isInteger(trackN)) return json(res, 400, { ok: false, error: "uri and track required" });
+        if (typeof payload.on !== "boolean") return json(res, 400, { ok: false, error: "on must be a boolean" });
+        return json(res, 200, { ok: setManualFavourite(db, profileId, uri, trackN, payload.on) });
+      }
+
       /* ── the review queue (§6) ────────────────────────────────────────
        * A parent surface, on a phone, once a day. It is the only path into the child's
        * crate, and the gate it goes through is `approve()` in the store — not anything here.
@@ -175,6 +190,16 @@ export function createApp(db: DatabaseSync) {
         const uri = String(payload.uri ?? "");
         if (!uri) return json(res, 400, { ok: false, error: "no album uri" });
         return json(res, 200, reopen(db, uri));
+      }
+
+      if (route === "/api/review/recommend" && method === "POST") {
+        const payload = await body(req);
+        const uri = String(payload.uri ?? "");
+        if (!uri) return json(res, 400, { ok: false, error: "no album uri" });
+        if (typeof payload.recommended !== "boolean") {
+          return json(res, 400, { ok: false, error: "recommended must be a boolean" });
+        }
+        return json(res, 200, recommend(db, profileId, uri, payload.recommended));
       }
 
       /* ── settings ─────────────────────────────────────────────────────── */

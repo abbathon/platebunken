@@ -27,7 +27,14 @@ export interface StoredSettings {
   lang: "nb" | "en";
   theme: string;
   numeralFace: string;
+  /** The ALGORITHMIC mark — derived from play counts, never declared. */
   favouriteMark: FavouriteMark;
+  /**
+   * The MANUAL mark — a track he was told is a favourite, through a tap or from admin. A
+   * separate setting so the parent can pick a shape that cannot be confused with the
+   * algorithmic one above, even if they change either later.
+   */
+  manualFavouriteMark: FavouriteMark;
   /** Marks off entirely. Some children chase a mark; this is the way back out. */
   favouritesShown: boolean;
   tricklePerDay: number;
@@ -62,6 +69,9 @@ export const DEFAULTS: StoredSettings = {
   theme: "natt",
   numeralFace: "archivo",
   favouriteMark: "heart",
+  // Not "heart" — that is the algorithmic default. Reads instantly even small, per its own
+  // note in marks.ts, and collides with nothing else on the row.
+  manualFavouriteMark: "bolt",
   favouritesShown: true,
   tricklePerDay: 1,
   sources: { listenbrainz: true, lastfm: true, deezer: true, charts: false },
@@ -90,6 +100,7 @@ export function load(db: DatabaseSync): StoredSettings {
     theme: str(s.theme, DEFAULTS.theme),
     numeralFace: str(s.numeralFace, DEFAULTS.numeralFace),
     favouriteMark: isMark(s.favouriteMark) ? s.favouriteMark : DEFAULTS.favouriteMark,
+    manualFavouriteMark: isMark(s.manualFavouriteMark) ? s.manualFavouriteMark : DEFAULTS.manualFavouriteMark,
     favouritesShown: bool(s.favouritesShown, DEFAULTS.favouritesShown),
     tricklePerDay: Number.isFinite(s.tricklePerDay) ? Number(s.tricklePerDay) : DEFAULTS.tricklePerDay,
     sources: {

@@ -27,8 +27,10 @@ export interface Settings {
   lang: Lang;
   theme: string;
   numeralFace: string;
-  /** Which shape marks a track he keeps choosing. See marks.ts. */
+  /** Which shape marks a track he keeps choosing — the algorithmic mark. See marks.ts. */
   favouriteMark: MarkId;
+  /** Which shape marks a track he was told is a favourite — the manual mark. */
+  manualFavouriteMark: MarkId;
   /** Marks off entirely — some children chase a mark, and this is the way back out. */
   favouritesShown: boolean;
   /**
@@ -54,6 +56,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "natt",
   numeralFace: "archivo",
   favouriteMark: "heart",
+  manualFavouriteMark: "bolt",
   favouritesShown: true,
   volumeCeiling: 50,
   volumeStart: 15,
@@ -198,7 +201,10 @@ function gate(ctx: AdminContext): HTMLElement {
   const pad = root.querySelector(".gate__pad")!;
   for (const d of ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", ""]) {
     if (!d) { pad.append(el(`<span></span>`)); continue; }
-    const b = el(`<button class="btn gate__key" aria-label="${d}">${d}</button>`);
+    // The digit is wrapped in its own span, not a bare text node: `.btn::after` is an
+    // absolutely-positioned face layer that otherwise paints over in-flow text with no
+    // z-index to lift it above it — the same bug already fixed for `.btn svg`, see style.css.
+    const b = el(`<button class="btn gate__key" aria-label="${d}"><span class="gate__key-digit">${d}</span></button>`);
     b.addEventListener("click", () => press(d));
     pad.append(b);
   }

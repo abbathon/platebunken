@@ -8,9 +8,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openStore } from "./db.ts";
 import {
-  addFlag, approve, counts, crate, ensureProfile, getAlbum,
-  reject, release, reopenRejected, reviewQueue, setTracks, suggest, upsertAlbum, withdraw,
-  type AlbumInput,
+  addFlag, approve, counts, crate, crateAlphabetical, ensureProfile, getAlbum, heldForTracks,
+  manualFavourites, newlyReleased, reject, release, reopenRejected, reviewQueue,
+  setManualFavourite, setRecommended, setTracks, suggest, upsertAlbum, waitingToRelease,
+  withdraw, type AlbumInput,
 } from "./crate.ts";
 
 const KID = "child_a";
@@ -278,4 +279,106 @@ test("approving twice is idempotent, not an error", () => {
   approve(db, KID, a.uri);
   approve(db, KID, a.uri);
   assert.equal(counts(db, KID).approved, 1);
+});
+
+/* ── the manual "like" ───────────────────────────────────────────────────
+ * A later, deliberate override of "there is no like button and there must not be one" — see
+ * favouriteTracks's comment. These tests are about the mechanism, not the product decision.
+ */
+
+test("a manual like can be set and cleared, and only shows up for its own profile", () => {
+  const db = store();
+  const a = admit(db, 1);
+  release(db, KID, 1);
+  ensureProfile(db, "child_b", "child B");
+
+  assert.equal(setManualFavourite(db, KID, a.uri, 1, true), true);
+  assert.deepEqual(manualFavourites(db, KID).get(a.uri), new Set([1]));
+  assert.equal(manualFavourites(db, "child_b").has(a.uri), false, "not this profile's like");
+
+  assert.equal(setManualFavourite(db, KID, a.uri, 1, false), true);
+  assert.equal(manualFavourites(db, KID).has(a.uri), false, "cleared, not left as an empty set");
+});
+
+test("the gate holds on manual likes too: an album not in the crate cannot be liked", () => {
+  const db = store();
+  const a = album(1);
+  upsertAlbum(db, a);
+  suggest(db, a.uri, "similar", null);
+  approve(db, KID, a.uri);   // approved, but not released — no track list
+
+  assert.equal(setManualFavourite(db, KID, a.uri, 1, true), false);
+  assert.equal(manualFavourites(db, KID).size, 0);
+});
+
+/* ── the parent's "recommend to child" ───────────────────────────────────
+ * Album-level, a different actor and granularity from the manual like above. It only ever
+ * changes which unreleased row release() picks next.
+ */
+
+test("a recommended album releases before an earlier, non-recommended one", () => {
+  const db = store();
+  const a = admit(db, 1);   // approved first
+  const b = admit(db, 2);   // approved second
+  assert.equal(setRecommended(db, KID, b.uri, true), true);
+
+  const out = release(db, KID, 1);
+  assert.deepEqual(out.map((x) => x.uri), [b.uri], "recommended jumps the FIFO queue");
+  assert.deepEqual(waitingToRelease(db, KID).map((x) => x.uri), [a.uri]);
+});
+
+test("recommending a released album does nothing — there is no queue order left to change", () => {
+  const db = store();
+  const a = admit(db, 1);
+  release(db, KID, 1);
+  assert.equal(setRecommended(db, KID, a.uri, true), false);
+});
+
+test("waitingToRelease and heldForTracks both say which albums are recommended", () => {
+  const db = store();
+  const waiting = admit(db, 1);
+  setRecommended(db, KID, waiting.uri, true);
+  const held = album(2);
+  upsertAlbum(db, held);
+  suggest(db, held.uri, "similar", null);
+  approve(db, KID, held.uri);   // held: no track list
+  setRecommended(db, KID, held.uri, true);
+
+  assert.equal(waitingToRelease(db, KID)[0]!.recommended, true);
+  assert.equal(heldForTracks(db, KID)[0]!.recommended, true);
+});
+
+/* ── the alphabetical grid, and the "new" shelf it broke ─────────────────
+ * §4.1's deliberate reversal: the crate's DISPLAY order is alphabetical by artist now.
+ * `crate()` above is untouched and still position-ordered — these are the two new,
+ * independent reads of the same rows.
+ */
+
+test("crateAlphabetical sorts by artist, not by release position", () => {
+  const db = store();
+  admit(db, 1, { artist: "Zebra" });
+  admit(db, 2, { artist: "Abba" });
+  release(db, KID, 2);   // Zebra released first, at position 0; Abba at position 1
+
+  assert.deepEqual(crateAlphabetical(db, KID).map((a) => a.artist), ["Abba", "Zebra"]);
+});
+
+test("crateAlphabetical excludes withdrawn and still-trackless albums, with no gap left behind", () => {
+  const db = store();
+  const kept = admit(db, 1, { artist: "Kept" });
+  const gone = admit(db, 2, { artist: "Gone" });
+  release(db, KID, 2);
+  withdraw(db, KID, gone.uri);
+
+  assert.deepEqual(crateAlphabetical(db, KID).map((a) => a.uri), [kept.uri]);
+});
+
+test("newlyReleased is newest-first by position, independent of alphabetical display order", () => {
+  const db = store();
+  admit(db, 1, { artist: "Zebra" });   // released first: position 0
+  admit(db, 2, { artist: "Abba" });    // released second: position 1
+  release(db, KID, 2);
+
+  // Alphabetically Abba comes first, but it is the NEWER release, so it must lead here too.
+  assert.deepEqual(newlyReleased(db, KID, 10), ["qobuz://album/2", "qobuz://album/1"]);
 });
