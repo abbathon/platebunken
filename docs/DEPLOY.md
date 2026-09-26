@@ -245,8 +245,14 @@ page, which is the worst possible failure for a pre-reader.
   renders; it is silent. That is a deliberately better failure than a crate that looks broken.
 - **The review queue is at `/admin`**, behind the same four digits as the settings screen
   (`GATE_PIN`). It is a child gate, not security.
-- **One album is released each morning at 06:00 local**, at most one a day, from whatever has
-  been approved. `/admin` can push a release immediately when that is wanted.
+- **One album is released each morning, from whatever has been approved by then, at most one a
+  day.** Not "at exactly 06:00" — the gate (`trickleDue` in `src/server/trickle.ts`) is "not
+  before 06:00 local, and not if something has *already* released today," checked by reading
+  the newest `released_at` off the store, never by marking the day itself used. If nothing was
+  waiting when 06:00 came round, the day's release is not spent — the first check afterwards
+  that finds something waiting releases it then, container restart included. Two releases on
+  one calendar day is what the check refuses, not "a release outside a five-minute window".
+  `/admin` can push a release immediately when that is wanted.
 - **The curation worker runs itself**, once a day after 03:00 local, inside the container. The
   boot log says so. It fills the review queue and **decides nothing** — the gate at /admin is
   where a person approves, and `approve()` refuses anything that skipped it, so an automatic
